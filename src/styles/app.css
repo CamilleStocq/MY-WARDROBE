@@ -197,7 +197,7 @@ p {
   inset: auto 0 0 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   height: calc(var(--nav-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
   background: var(--white);
@@ -569,9 +569,6 @@ p {
   bottom: -1px;
   height: 1.5px;
   background: var(--text);
-}
-.collection-tabs {
-  margin-bottom: var(--s5);
 }
 .tabs-text .count {
   margin-left: 4px;

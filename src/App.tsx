@@ -13,11 +13,12 @@ import { GarmentEditor } from './ui/garment/GarmentEditor';
 type Route = 'today' | 'wardrobe' | 'calendar' | 'favorites' | 'settings';
 const ROUTES: Route[] = ['today', 'wardrobe', 'calendar', 'favorites', 'settings'];
 
-/** Navigation principale : quatre onglets. Le calendrier vit dans « Favoris » (Looks · Calendrier). */
+/** Navigation principale : cinq onglets. */
 const TABS: { route: Route; label: string; icon: IconName }[] = [
   { route: 'today', label: 'Aujourd’hui', icon: 'sparkle' },
   { route: 'wardrobe', label: 'Dressing', icon: 'hanger' },
   { route: 'favorites', label: 'Favoris', icon: 'heart' },
+  { route: 'calendar', label: 'Calendrier', icon: 'calendar' },
   { route: 'settings', label: 'Profil', icon: 'user' },
 ];
 
@@ -29,7 +30,7 @@ const TITLES: Record<Route, string> = {
   settings: 'Profil',
 };
 
-const isActive = (tab: Route, route: Route) => tab === route || (tab === 'favorites' && route === 'calendar');
+const isActive = (tab: Route, route: Route) => tab === route;
 
 function readRoute(): Route {
   const r = window.location.hash.replace(/^#\/?/, '') as Route;

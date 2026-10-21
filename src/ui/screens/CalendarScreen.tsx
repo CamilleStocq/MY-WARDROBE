@@ -9,7 +9,6 @@ import { Button, EmptyState, IconButton, Sheet } from '../primitives';
 import { Icon } from '../Icon';
 import { GarmentPhoto } from '../garment/GarmentImage';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
-import { CollectionTabs } from '../CollectionTabs';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes'];
@@ -42,11 +41,10 @@ export function CalendarScreen({ goToday }: { goToday: () => void }) {
     <>
       <div className="screen-head">
         <div>
-          <h1>Favoris</h1>
+          <h1>Calendrier</h1>
           <p className="sub">Ce que vous avez porté, jour après jour.</p>
         </div>
       </div>
-      <CollectionTabs current="calendar" />
 
       <div className="cal">
         <div className="cal-head">

@@ -8,7 +8,6 @@ import { useStore } from '../../state/store';
 import { Button, Chip, ConfirmDialog, EmptyState, Field, Notice, Sheet } from '../primitives';
 import { GarmentPhoto } from '../garment/GarmentImage';
 import { Icon } from '../Icon';
-import { CollectionTabs } from '../CollectionTabs';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
 
 const ORDER: SlotName[] = ['top', 'mid', 'bottom', 'onepiece', 'outer', 'shoes'];
@@ -50,7 +49,6 @@ export function FavoritesScreen({ goTo }: { goTo: (t: 'today' | 'wardrobe') => v
           <p className="sub">{favorites.length ? `${favorites.length} look${favorites.length > 1 ? 's' : ''} enregistré${favorites.length > 1 ? 's' : ''}` : 'Vos looks enregistrés'}</p>
         </div>
       </div>
-      <CollectionTabs current="favorites" />
 
       {!favorites.length ? (
         <EmptyState
