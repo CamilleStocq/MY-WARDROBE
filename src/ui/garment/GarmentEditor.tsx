@@ -17,7 +17,8 @@ import {
 } from '../../domain/taxonomy';
 import { getColor } from '../../domain/colors';
 import { validateGarment } from '../../domain/normalize';
-import { deleteImage, getImageRecord, processImage, saveImage, type ProcessedImage } from '../../services/imageService';
+import { getImageRecord, processImage, saveImage, type ProcessedImage } from '../../services/imageService';
+import { releaseImage } from '../../services/snapshotService';
 import { PhotoEditor } from './PhotoEditor';
 import { useStore } from '../../state/store';
 import { Button, ChipGroup, ColorPicker, Field, IconButton, Notice, Segmented, Sheet } from '../primitives';
@@ -180,7 +181,7 @@ export function GarmentEditor({
       let saved: Garment;
       if (garment) {
         saved = await saveGarment({ ...garment, ...draft, name: draft.name.trim(), imageId });
-        if (photo && garment.imageId && garment.imageId !== imageId) await deleteImage(garment.imageId);
+        if (photo && garment.imageId && garment.imageId !== imageId) await releaseImage(garment.imageId);
         toast('Modifications enregistrées');
       } else {
         saved = await createGarment({ ...draft, name: draft.name.trim(), imageId });

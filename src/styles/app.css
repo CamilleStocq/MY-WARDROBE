@@ -2415,3 +2415,38 @@ details > summary::-webkit-details-marker {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+/* copies automatiques (Profil) */
+.snapshots {
+  margin-top: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.snapshots h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.snapshot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.snapshot-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 56px;
+  border-bottom: 1px solid var(--line);
+}
+.snapshot-list li > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.snapshot-list b {
+  font-weight: 500;
+  font-size: var(--fs-sm);
+}

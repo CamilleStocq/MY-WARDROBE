@@ -11,6 +11,7 @@ import { loadPreferences, savePreferences } from '../services/preferencesService
 import { getWeather, type WeatherResult } from '../services/weather/weatherService';
 import { loadDemoWardrobe, removeDemoWardrobe } from '../services/demoData';
 import { clearWornDay, loadCalendar, recentlyWorn, setWornDay, type Calendar } from '../services/calendarService';
+import { takeSnapshot } from '../services/snapshotService';
 
 export interface ToastMsg {
   id: number;
@@ -133,6 +134,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reloadAll();
     requestPersistence();
   }, [reloadAll]);
+
+  // Copie interne automatique à chaque ouverture de l'app (et au retour au premier plan,
+  // au plus toutes les 10 minutes). Aucune copie n'est créée si rien n'a changé.
+  useEffect(() => {
+    if (!ready) return;
+    let last = 0;
+    const snap = () => {
+      if (Date.now() - last < 10 * 60 * 1000) return;
+      last = Date.now();
+      takeSnapshot().catch(() => undefined);
+    };
+    snap();
+    const onVisible = () => document.visibilityState === 'visible' && snap();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [ready]);
 
   // ---------- météo ----------
   const locKey = prefs.location ? `${prefs.location.latitude},${prefs.location.longitude},${prefs.location.name}` : null;

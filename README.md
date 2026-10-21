@@ -61,6 +61,7 @@ Variables dans `src/styles/app.css` : blanc `#FFFFFF`, surfaces photo `#F5F5F5`,
 ## Données et sauvegardes
 
 - Les données ne sont **pas synchronisées** entre appareils. **Profil → Télécharger une sauvegarde** crée un fichier JSON complet (photos comprises) ; sur iPhone, le partage permet de l'enregistrer dans Fichiers.
+- **Copies automatiques** : à chaque ouverture de l'app (et au retour au premier plan, au plus toutes les 10 minutes), une copie des données est enregistrée dans l'app si quelque chose a changé ; les 10 dernières sont conservées et consultables dans **Profil → Mes données**. Les photos ne sont pas dupliquées : elles sont conservées tant qu'une copie les utilise. Revenir à une copie copie d'abord l'état actuel (opération réversible). Ces copies disparaissent si l'app est supprimée : elles complètent le fichier de sauvegarde, elles ne le remplacent pas.
 - **Restaurer** : le fichier est validé entièrement avant toute écriture (format, version, vêtements, photos, favoris, calendrier), un résumé est affiché pour confirmation, puis tout est écrit en une seule transaction (rien n'est écrit en cas d'erreur). Les éléments déjà présents sont conservés.
 - **Limites Safari / iPhone** : le navigateur peut effacer les données d'un site peu utilisé ; une app ajoutée à l'écran d'accueil est mieux protégée mais **supprimer l'app de l'écran d'accueil peut effacer ses données**. L'état « Stockage protégé » est affiché dans Profil. Faire une sauvegarde avant de réinstaller l'app.
 

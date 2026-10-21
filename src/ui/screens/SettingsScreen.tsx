@@ -7,6 +7,7 @@ import { WEIGHTS } from '../../engine/weights';
 import { deleteEverything, exportBackup, importBackup, readBackup, type BackupFile, type BackupSummary } from '../../services/backupService';
 import { weatherProvider } from '../../services/weather/weatherService';
 import { kv, newId } from '../../services/db';
+import { MAX_SNAPSHOTS, listSnapshots, restoreSnapshot, type SnapshotMeta } from '../../services/snapshotService';
 import { useStore } from '../../state/store';
 import { Button, ChipGroup, ColorPicker, ConfirmDialog, Field, IconButton, Notice, Segmented } from '../primitives';
 import { LocationPicker } from '../weather/LocationSheet';
@@ -19,10 +20,13 @@ export function SettingsScreen() {
   const importRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState<{ backup: BackupFile; summary: BackupSummary; name: string } | null>(null);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
+  const [restoreSnap, setRestoreSnap] = useState<SnapshotMeta | null>(null);
   const [storage, setStorage] = useState<{ persisted: boolean | null; usedMb: number | null }>({ persisted: null, usedMb: null });
 
   useEffect(() => {
     kv.get<string>('backup:last').then((d) => setLastBackup(d ?? null)).catch(() => undefined);
+    listSnapshots().then(setSnapshots).catch(() => undefined);
     (async () => {
       try {
         const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
@@ -83,6 +87,23 @@ export function SettingsScreen() {
     } finally {
       setBusy(null);
       if (importRef.current) importRef.current.value = '';
+    }
+  }
+
+  async function confirmRestoreSnapshot() {
+    if (!restoreSnap) return;
+    const snap = restoreSnap;
+    setRestoreSnap(null);
+    setBusy('snapshot');
+    try {
+      await restoreSnapshot(snap.id);
+      await reloadAll();
+      setSnapshots(await listSnapshots());
+      toast(`Données remises à l’état du ${snapDate(snap.createdAt)}`);
+    } catch (e) {
+      toast((e as Error).message, { tone: 'error' });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -322,6 +343,32 @@ export function SettingsScreen() {
               </Button>
             )}
           </div>
+          <div className="snapshots">
+            <h3>Copies automatiques</h3>
+            <p className="small muted">
+              Une copie de vos données est enregistrée dans l’app à chaque ouverture, si quelque chose a changé ({MAX_SNAPSHOTS} dernières conservées). Elle permet de revenir en arrière après une erreur, mais elle disparaît si l’app est supprimée : gardez aussi un fichier de sauvegarde.
+            </p>
+            {snapshots.length === 0 ? (
+              <p className="small muted">Aucune copie pour l’instant.</p>
+            ) : (
+              <ul className="snapshot-list">
+                {snapshots.map((sn, i) => (
+                  <li key={sn.id}>
+                    <span>
+                      <b>{snapDate(sn.createdAt)}</b>
+                      <span className="small muted">
+                        {sn.garments} vêtement{sn.garments > 1 ? 's' : ''} · {sn.outfits} favori{sn.outfits > 1 ? 's' : ''}
+                        {i === 0 ? ' · la plus récente' : ''}
+                      </span>
+                    </span>
+                    <Button size="sm" variant="outline" disabled={busy === 'snapshot'} onClick={() => setRestoreSnap(sn)}>
+                      Revenir
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           <Button variant="ghost" icon="trash" style={{ marginTop: 'var(--s4)', color: 'var(--danger)' }} onClick={() => setConfirmWipe(true)}>
             Supprimer toutes mes données
           </Button>
@@ -342,6 +389,15 @@ export function SettingsScreen() {
         </section>
       </div>
 
+      {restoreSnap && (
+        <ConfirmDialog
+          title="Revenir à cette copie ?"
+          message={`Vos vêtements, favoris, calendrier et préférences seront remis à l’état du ${snapDate(restoreSnap.createdAt)} (${restoreSnap.garments} vêtements, ${restoreSnap.outfits} favoris). L’état actuel est d’abord copié : vous pourrez y revenir depuis cette liste.`}
+          confirmLabel="Revenir à cette copie"
+          onCancel={() => setRestoreSnap(null)}
+          onConfirm={confirmRestoreSnapshot}
+        />
+      )}
       {pending && (
         <ConfirmDialog
           title="Restaurer cette sauvegarde ?"
@@ -379,4 +435,8 @@ export function SettingsScreen() {
       )}
     </>
   );
+}
+
+function snapDate(iso: string): string {
+  return new Date(iso).toLocaleString('fr-BE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }

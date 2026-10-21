@@ -1,7 +1,8 @@
 import type { Garment } from '../domain/types';
 import { normalizeGarment } from '../domain/normalize';
 import { db, newId } from './db';
-import { deleteImage, getImageRecord, putImageRecord, type ImageRecord } from './imageService';
+import { getImageRecord, putImageRecord, type ImageRecord } from './imageService';
+import { releaseImage } from './snapshotService';
 
 export async function listGarments(): Promise<Garment[]> {
   const rows = await db.getAll<Garment>('garments');
@@ -30,7 +31,7 @@ export interface DeletedGarment {
 export async function deleteGarment(g: Garment): Promise<DeletedGarment> {
   const image = g.imageId ? await getImageRecord(g.imageId) : undefined;
   await db.delete('garments', g.id);
-  if (g.imageId) await deleteImage(g.imageId);
+  if (g.imageId) await releaseImage(g.imageId);
   return { garment: g, image };
 }
 

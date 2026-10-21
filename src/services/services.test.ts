@@ -3,6 +3,7 @@ import { buildOpenMeteoUrl, parseOpenMeteo } from './weather/openMeteo';
 import { analyzePixels, hasTransparency } from './colorAnalysis';
 import { maskBounds } from './backgroundRemoval';
 import { validateBackup } from './backupService';
+import { canonical, fingerprint, snapshotsToPrune, unreferencedImages } from './snapshotService';
 import { normalizeGarment, normalizePreferences, validateGarment } from '../domain/normalize';
 import { roundCoord } from './locationService';
 
@@ -170,5 +171,29 @@ describe('validation des sauvegardes', () => {
     const d = valid();
     d.images[0].full = 'pas-une-image';
     expect(validateBackup(d).ok).toBe(false);
+  });
+});
+
+describe('copies automatiques', () => {
+  const g = (id: string, imageId: string | null, name = id) =>
+    normalizeGarment({ id, imageId, name, category: 'top', subcategory: 'pull', createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z' } as never);
+  const meta = (id: string, createdAt: string, imageIds: string[] = []) => ({ id, createdAt, garments: 1, outfits: 0, days: 0, hash: id, imageIds });
+
+  it('même contenu dans un autre ordre = même empreinte ; changement = autre empreinte', () => {
+    const a = canonical([g('1', 'i1'), g('2', 'i2')], [], {}, null);
+    const b = canonical([g('2', 'i2'), g('1', 'i1')], [], {}, null);
+    const c = canonical([g('1', 'i1'), g('2', 'i2', 'Pull renommé')], [], {}, null);
+    expect(fingerprint(a)).toBe(fingerprint(b));
+    expect(fingerprint(a)).not.toBe(fingerprint(c));
+  });
+  it('ne garde que les copies les plus récentes', () => {
+    const index = Array.from({ length: 12 }, (_, i) => meta(`s${i}`, `2026-10-${String(i + 1).padStart(2, '0')}T08:00:00Z`));
+    const pruned = snapshotsToPrune(index, 10).map((s) => s.id);
+    expect(pruned).toEqual(['s1', 's0']);
+  });
+  it('une photo est conservée tant qu’une copie l’utilise', () => {
+    const garments = [g('1', 'i1')];
+    const index = [meta('s1', '2026-10-21T08:00:00Z', ['i2'])];
+    expect(unreferencedImages(['i1', 'i2', 'i3'], garments, index)).toEqual(['i3']);
   });
 });
