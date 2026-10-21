@@ -15,7 +15,7 @@ const ORDER: SlotName[] = ['top', 'mid', 'bottom', 'onepiece', 'outer', 'shoes']
 type Filter = { kind: 'season'; v: Season } | { kind: 'style'; v: Style } | { kind: 'occasion'; v: Occasion } | null;
 
 export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'wardrobe') => void; onProfile: () => void }) {
-  const { favorites, garments } = useStore();
+  const { favorites, garments, removeFavorite } = useStore();
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>(null);
   const byId = useMemo(() => new Map(garments.map((g) => [g.id, g])), [garments]);
@@ -91,10 +91,8 @@ export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'ward
             {list.map((f) => {
               const missing = f.garmentIds.filter((id) => !byId.has(id)).length;
               return (
-                <button key={f.id} type="button" className="fav-card" onClick={() => setOpen(f.id)}>
-                  <span className="fav-heart" aria-hidden>
-                    <Icon name="heart" size={18} filled />
-                  </span>
+                <div key={f.id} className="fav-item">
+                <button type="button" className="fav-card" onClick={() => setOpen(f.id)}>
                   <OutfitBoard slots={f.slots} byId={byId} mood={f.weatherContext ? moodFromContext(f) : 'warm'} compact label={f.name} />
                   <b>{f.name}</b>
                   <span>
@@ -103,6 +101,10 @@ export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'ward
                     {missing > 0 && `, ${missing} pièce${missing > 1 ? 's' : ''} manquante${missing > 1 ? 's' : ''}`}
                   </span>
                 </button>
+                <button type="button" className="fav-heart" onClick={() => removeFavorite(f)} aria-label={`Retirer « ${f.name} » des favoris`} title="Retirer des favoris">
+                  <Icon name="heart" size={18} filled />
+                </button>
+                </div>
               );
             })}
           </div>

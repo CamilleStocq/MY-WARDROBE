@@ -20,7 +20,7 @@ const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes']
 
 export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | 'settings' | 'calendar') => void }) {
   const store = useStore();
-  const { garments, prefs, needs, favorites, engineContext, rememberProposal, addFavorite, saveFavorite, toast, openGarment, logWorn, calendar } = store;
+  const { garments, prefs, needs, favorites, engineContext, rememberProposal, addFavorite, saveFavorite, removeFavorite, toast, openGarment, logWorn, calendar } = store;
   const [loaded, setLoaded] = useState(false);
   const [slots, setSlots] = useState<OutfitSlots | null>(null);
   const [locked, setLocked] = useState<LockKey[]>([]);
@@ -151,7 +151,8 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   async function save() {
     if (!slots || !evaluation) return;
     if (savedAs) {
-      toast(`Déjà dans vos favoris : « ${savedAs.name} »`);
+      // second appui sur le cœur : retire le look des favoris (annulable depuis la notification)
+      await removeFavorite(savedAs);
       return;
     }
     const pieces = ORDER.map((s) => (slots[s] ? byId.get(slots[s]!) : undefined)).filter(Boolean);
