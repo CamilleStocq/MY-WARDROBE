@@ -1,0 +1,11 @@
+{
+  "name": "My Wardrobe",
+  "short_name": "Wardrobe",
+  "description": "Mon dressing intelligent et ma styliste personnelle.",
+  "lang": "fr",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FBF5F0",
+  "theme_color": "#FBF5F0",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

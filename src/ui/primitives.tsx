@@ -1,0 +1,417 @@
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Icon, type IconName } from './Icon';
+import { COLORS, getColor } from '../domain/colors';
+
+// ---------------------------------------------------------------------------
+// Boutons
+// ---------------------------------------------------------------------------
+
+type BtnVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+
+export function Button({
+  variant = 'secondary',
+  size,
+  block,
+  loading,
+  icon,
+  children,
+  className = '',
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: BtnVariant;
+  size?: 'sm' | 'lg';
+  block?: boolean;
+  loading?: boolean;
+  icon?: IconName;
+}) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      disabled={rest.disabled || loading}
+      aria-busy={loading || undefined}
+      className={`btn btn-${variant} ${size ? `btn-${size}` : ''} ${block ? 'btn-block' : ''} ${className}`}
+    >
+      {loading ? <span className="spinner" aria-hidden /> : icon ? <Icon name={icon} size={20} /> : null}
+      {children}
+    </button>
+  );
+}
+
+export function IconButton({
+  icon,
+  label,
+  filled,
+  className = '',
+  size = 22,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName; label: string; filled?: boolean; size?: number }) {
+  return (
+    <button type="button" aria-label={label} title={label} {...rest} className={`icon-btn ${filled ? 'filled' : ''} ${className}`}>
+      <Icon name={icon} size={size} />
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chips, pastilles
+// ---------------------------------------------------------------------------
+
+export function Chip({
+  pressed,
+  onClick,
+  children,
+  role,
+}: {
+  pressed: boolean;
+  onClick: () => void;
+  children: ReactNode;
+  role?: 'radio' | 'checkbox';
+}) {
+  return (
+    <button
+      type="button"
+      className="chip"
+      role={role}
+      aria-pressed={role ? undefined : pressed}
+      aria-checked={role ? pressed : undefined}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ColorDot({ color, size = 16 }: { color: string; size?: number }) {
+  const c = getColor(color);
+  return <span className="dot" style={{ background: c.hex, width: size, height: size }} title={c.label} aria-hidden />;
+}
+
+/** Choix multiple parmi des options (chips). */
+export function ChipGroup<T extends string | number>({
+  options,
+  value,
+  onChange,
+  multiple,
+  label,
+}: {
+  options: { value: T; label: ReactNode }[];
+  value: T[];
+  onChange: (v: T[]) => void;
+  multiple?: boolean;
+  label: string;
+}) {
+  return (
+    <div className="chip-wrap" role={multiple ? 'group' : 'radiogroup'} aria-label={label}>
+      {options.map((o) => {
+        const on = value.includes(o.value);
+        return (
+          <Chip
+            key={String(o.value)}
+            pressed={on}
+            role={multiple ? 'checkbox' : 'radio'}
+            onClick={() => onChange(multiple ? (on ? value.filter((v) => v !== o.value) : [...value, o.value]) : [o.value])}
+          >
+            {o.label}
+          </Chip>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Segmented<T extends string | number>({
+  options,
+  value,
+  onChange,
+  label,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  label: string;
+}) {
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button key={String(o.value)} type="button" role="radio" aria-checked={o.value === value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Nuancier : sélection simple ou multiple. */
+export function ColorPicker({
+  value,
+  onChange,
+  multiple,
+  label,
+  exclude = [],
+}: {
+  value: string[];
+  onChange: (v: string[]) => void;
+  multiple?: boolean;
+  label: string;
+  exclude?: string[];
+}) {
+  return (
+    <div className="swatches" role={multiple ? 'group' : 'radiogroup'} aria-label={label}>
+      {COLORS.filter((c) => !exclude.includes(c.key)).map((c) => {
+        const on = value.includes(c.key);
+        return (
+          <button
+            key={c.key}
+            type="button"
+            role={multiple ? 'checkbox' : 'radio'}
+            aria-checked={on}
+            aria-label={c.label}
+            title={c.label}
+            className={`swatch ${multiple ? 'swatch-secondary' : ''}`}
+            style={{ background: c.hex }}
+            onClick={() => onChange(multiple ? (on ? value.filter((v) => v !== c.key) : [...value, c.key]) : [c.key])}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Champs
+// ---------------------------------------------------------------------------
+
+export function Field({
+  label,
+  hint,
+  error,
+  children,
+  htmlFor,
+}: {
+  label: string;
+  hint?: string;
+  error?: string;
+  children: ReactNode;
+  htmlFor?: string;
+}) {
+  return (
+    <div className="field">
+      {htmlFor ? <label htmlFor={htmlFor}>{label}</label> : <span className="label">{label}</span>}
+      {children}
+      {error ? (
+        <span className="error" role="alert">
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="hint">{hint}</span>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panneau modal (bottom sheet sur mobile, panneau centré sur ordinateur)
+// ---------------------------------------------------------------------------
+
+export function Sheet({
+  title,
+  onClose,
+  children,
+  footer,
+  size,
+  headerExtra,
+}: {
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  size?: 'wide' | 'narrow';
+  headerExtra?: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  useEffect(() => {
+    const prev = document.activeElement as HTMLElement | null;
+    const el = ref.current;
+    const focusables = () =>
+      Array.from(
+        el?.querySelectorAll<HTMLElement>('button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])') ?? [],
+      );
+    (el?.querySelector<HTMLElement>('[data-autofocus]') ?? el)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closeRef.current();
+      }
+      if (e.key === 'Tab') {
+        const f = focusables();
+        if (!f.length) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    el?.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      el?.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      prev?.focus?.();
+    };
+  }, []);
+
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} className={`sheet ${size ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className="sheet-grip" aria-hidden />
+        <div className="sheet-head">
+          <h2 id={titleId}>{title}</h2>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {headerExtra}
+            <IconButton icon="close" label="Fermer" onClick={onClose} />
+          </div>
+        </div>
+        <div className="sheet-body">{children}</div>
+        {footer && <div className="sheet-foot">{footer}</div>}
+      </div>
+    </div>
+  );
+}
+
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+  danger,
+}: {
+  title: string;
+  message: ReactNode;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <Sheet
+      title={title}
+      onClose={onCancel}
+      size="narrow"
+      footer={
+        <>
+          <Button variant="outline" onClick={onCancel} data-autofocus>
+            Annuler
+          </Button>
+          <Button variant={danger ? 'danger' : 'secondary'} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <p className="muted">{message}</p>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notices & états vides
+// ---------------------------------------------------------------------------
+
+export function Notice({
+  tone = 'info',
+  icon,
+  title,
+  children,
+  actions,
+}: {
+  tone?: 'info' | 'warn' | 'error' | 'demo' | 'neutral';
+  icon?: IconName;
+  title?: ReactNode;
+  children?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className={`notice ${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
+      <Icon name={icon ?? (tone === 'warn' || tone === 'error' ? 'alert' : 'info')} size={18} />
+      <div className="notice-body">
+        {title && <strong>{title}</strong>}
+        {children && <span>{children}</span>}
+        {actions && <div className="notice-actions">{actions}</div>}
+      </div>
+    </div>
+  );
+}
+
+export function EmptyArt({ kind }: { kind: 'wardrobe' | 'favorites' | 'outfit' | 'search' }) {
+  // petites compositions géométriques dans la palette (pas d'illustrations « cartoon »)
+  const shapes = {
+    wardrobe: (
+      <>
+        <rect x="18" y="20" width="56" height="76" rx="14" fill="#F4D9D6" />
+        <rect x="82" y="34" width="56" height="62" rx="14" fill="#E9E2F7" />
+        <path d="M78 22a6 6 0 1 1 6 6c-3 0-6 2-6 5v2l26 16" stroke="#2B2A2E" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+        <circle cx="128" cy="24" r="9" fill="#FF7A59" />
+      </>
+    ),
+    favorites: (
+      <>
+        <rect x="24" y="22" width="50" height="66" rx="12" fill="#E4ECE0" transform="rotate(-6 49 55)" />
+        <rect x="70" y="18" width="56" height="74" rx="12" fill="#F4D9D6" transform="rotate(5 98 55)" />
+        <path d="M98 74s-14-8.6-14-18.6A8 8 0 0 1 98 50.6a8 8 0 0 1 14 4.8C112 65.4 98 74 98 74z" fill="#D94C7E" />
+      </>
+    ),
+    outfit: (
+      <>
+        <rect x="20" y="16" width="116" height="92" rx="20" fill="#FAE9E6" />
+        <rect x="42" y="28" width="34" height="40" rx="8" fill="#C9B8E4" />
+        <rect x="80" y="40" width="30" height="52" rx="8" fill="#A9BFA4" />
+        <circle cx="118" cy="30" r="8" fill="#FF7A59" />
+      </>
+    ),
+    search: (
+      <>
+        <rect x="30" y="22" width="96" height="76" rx="18" fill="#E9E2F7" />
+        <circle cx="74" cy="56" r="18" stroke="#2B2A2E" strokeWidth="4" fill="none" />
+        <path d="M88 70l14 14" stroke="#2B2A2E" strokeWidth="4" strokeLinecap="round" />
+      </>
+    ),
+  };
+  return (
+    <svg className="empty-art" viewBox="0 0 156 120" aria-hidden>
+      {shapes[kind]}
+    </svg>
+  );
+}
+
+export function EmptyState({
+  art,
+  title,
+  children,
+  actions,
+}: {
+  art: 'wardrobe' | 'favorites' | 'outfit' | 'search';
+  title: string;
+  children?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="empty">
+      <EmptyArt kind={art} />
+      <h2>{title}</h2>
+      {children && <p>{children}</p>}
+      {actions && <div className="empty-actions">{actions}</div>}
+    </div>
+  );
+}
