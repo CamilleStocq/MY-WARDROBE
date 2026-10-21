@@ -7,6 +7,7 @@ import { saveToday } from '../../services/outfitService';
 import { useStore } from '../../state/store';
 import { Button, Chip, ConfirmDialog, EmptyState, Field, IconButton, Notice, Sheet } from '../primitives';
 import { GarmentPhoto } from '../garment/GarmentImage';
+import { Icon } from '../Icon';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
 
 const ORDER: SlotName[] = ['top', 'mid', 'bottom', 'onepiece', 'outer', 'shoes'];
@@ -47,7 +48,7 @@ export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'ward
           <h1>Mes favoris</h1>
           {favorites.length > 0 && <p className="sub">{favorites.length} tenue{favorites.length > 1 ? 's' : ''} enregistrée{favorites.length > 1 ? 's' : ''}</p>}
         </div>
-        <IconButton icon="user" label="Profil et préférences" className="profile-btn mobile-only" filled onClick={onProfile} />
+        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={onProfile} />
       </div>
 
       {!favorites.length ? (
@@ -91,6 +92,9 @@ export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'ward
               const missing = f.garmentIds.filter((id) => !byId.has(id)).length;
               return (
                 <button key={f.id} type="button" className="fav-card" onClick={() => setOpen(f.id)}>
+                  <span className="fav-heart" aria-hidden>
+                    <Icon name="heart" size={18} filled />
+                  </span>
                   <OutfitBoard slots={f.slots} byId={byId} mood={f.weatherContext ? moodFromContext(f) : 'warm'} compact label={f.name} />
                   <b>{f.name}</b>
                   <span>

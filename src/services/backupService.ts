@@ -2,6 +2,7 @@ import type { Garment, SavedOutfit, UserPreferences } from '../domain/types';
 import { normalizeGarment, normalizeOutfit, normalizePreferences } from '../domain/normalize';
 import { db } from './db';
 import { blobToDataUrl, dataUrlToBlob, type ImageRecord } from './imageService';
+import { loadCalendar, replaceCalendar, type Calendar } from './calendarService';
 
 /**
  * Sauvegarde complète (vêtements + photos + favoris + préférences) dans un
@@ -14,6 +15,7 @@ interface BackupFile {
   preferences: UserPreferences;
   garments: Garment[];
   outfits: SavedOutfit[];
+  calendar?: Calendar;
   images: { id: string; full: string; thumb: string; width: number; height: number; createdAt: string }[];
 }
 
@@ -31,6 +33,7 @@ export async function exportBackup(): Promise<Blob> {
     preferences: normalizePreferences(prefsRow?.value),
     garments,
     outfits,
+    calendar: await loadCalendar(),
     images: await Promise.all(
       images.map(async (i) => ({
         id: i.id,
@@ -67,6 +70,7 @@ export async function importBackup(file: File): Promise<{ garments: number; outf
   }
   for (const g of data.garments) await db.put('garments', normalizeGarment(g));
   for (const o of data.outfits ?? []) await db.put('outfits', normalizeOutfit(o));
+  if (data.calendar) await replaceCalendar({ ...(await loadCalendar()), ...data.calendar });
   if (data.preferences) await db.put('kv', { key: 'preferences', value: normalizePreferences(data.preferences) });
   return { garments: data.garments.length, outfits: data.outfits?.length ?? 0 };
 }

@@ -7,15 +7,26 @@ import { WardrobeScreen } from './ui/screens/WardrobeScreen';
 import { TodayScreen } from './ui/screens/TodayScreen';
 import { FavoritesScreen } from './ui/screens/FavoritesScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
+import { CalendarScreen } from './ui/screens/CalendarScreen';
+import { GarmentEditor } from './ui/garment/GarmentEditor';
 
-type Route = 'today' | 'wardrobe' | 'favorites' | 'settings';
-const ROUTES: Route[] = ['today', 'wardrobe', 'favorites', 'settings'];
+type Route = 'today' | 'wardrobe' | 'calendar' | 'favorites' | 'settings';
+const ROUTES: Route[] = ['today', 'wardrobe', 'calendar', 'favorites', 'settings'];
 
 const TABS: { route: Route; label: string; icon: IconName }[] = [
-  { route: 'wardrobe', label: 'Ma garde-robe', icon: 'hanger' },
-  { route: 'today', label: 'Outfit du jour', icon: 'sparkle' },
-  { route: 'favorites', label: 'Mes favoris', icon: 'heart' },
+  { route: 'wardrobe', label: 'Garde-robe', icon: 'hanger' },
+  { route: 'today', label: 'Outfit', icon: 'sparkle' },
+  { route: 'calendar', label: 'Calendrier', icon: 'calendar' },
+  { route: 'favorites', label: 'Favoris', icon: 'heart' },
 ];
+
+const TITLES: Record<Route, string> = {
+  today: 'Outfit du jour',
+  wardrobe: 'Ma garde-robe',
+  calendar: 'Calendrier',
+  favorites: 'Mes favoris',
+  settings: 'Profil',
+};
 
 function readRoute(): Route {
   const r = window.location.hash.replace(/^#\/?/, '') as Route;
@@ -37,13 +48,13 @@ function useRoute(): [Route, (r: Route) => void] {
 }
 
 function Shell() {
-  const { ready, fatal, toasts, dismissToast, detailId, openGarment } = useStore();
+  const { ready, fatal, toasts, dismissToast, detailId, openGarment, adding, setAdding } = useStore();
   const [route, go] = useRoute();
   const [prev, setPrev] = useState<Route>('today');
 
   useEffect(() => {
     if (route !== 'settings') setPrev(route);
-    document.title = { today: 'Outfit du jour', wardrobe: 'Ma garde-robe', favorites: 'Mes favoris', settings: 'Profil' }[route] + ' · My Wardrobe';
+    document.title = `${TITLES[route]} · My Wardrobe`;
   }, [route]);
 
   if (fatal) {
@@ -59,17 +70,18 @@ function Shell() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-dot" aria-hidden />
-          My Wardrobe
-        </div>
+        <div className="brand">My Wardrobe</div>
         <nav aria-label="Navigation principale">
-          {[TABS[1], TABS[0], TABS[2]].map((t) => (
+          {TABS.map((t) => (
             <a key={t.route} href={`#/${t.route}`} className="side-link" aria-current={route === t.route ? 'page' : undefined}>
               <Icon name={t.icon} />
-              {t.label}
+              {TITLES[t.route]}
             </a>
           ))}
+          <button type="button" className="side-link side-add" onClick={() => setAdding(true)}>
+            <Icon name="plus" />
+            Ajouter un vêtement
+          </button>
         </nav>
         <div className="side-foot">
           <a href="#/settings" className="side-link" aria-current={route === 'settings' ? 'page' : undefined}>
@@ -87,6 +99,8 @@ function Shell() {
           </div>
         ) : route === 'wardrobe' ? (
           <WardrobeScreen onProfile={() => go('settings')} />
+        ) : route === 'calendar' ? (
+          <CalendarScreen onProfile={() => go('settings')} goToday={() => go('today')} />
         ) : route === 'favorites' ? (
           <FavoritesScreen goTo={go} onProfile={() => go('settings')} />
         ) : route === 'settings' ? (
@@ -99,14 +113,13 @@ function Shell() {
       <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map((t) => (
           <a key={t.route} href={`#/${t.route}`} className="tab" aria-current={route === t.route ? 'page' : undefined}>
-            <span className="tab-icon">
-              <Icon name={t.icon} filled={route === t.route && t.icon === 'heart'} />
-            </span>
-            {t.label}
+            <Icon name={t.icon} filled={route === t.route && t.icon === 'heart'} />
+            <span>{t.label}</span>
           </a>
         ))}
       </nav>
 
+      {adding && <GarmentEditor onClose={() => setAdding(false)} />}
       {detailId && <GarmentDetail id={detailId} onClose={() => openGarment(null)} />}
 
       <div className="toasts" aria-live="polite">

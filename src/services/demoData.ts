@@ -107,6 +107,7 @@ export async function loadDemoWardrobe(): Promise<number> {
     await db.put<ImageRecord>('images', { id: imageId, full: blob, thumb: blob, width: 400, height: 500, createdAt: new Date().toISOString() });
     await createGarment({
       secondaryColors: [],
+      brand: '',
       seasons: [],
       material: '',
       silhouette: null,

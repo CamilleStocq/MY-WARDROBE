@@ -4,7 +4,7 @@ import { describeWeatherCode } from '../../services/weather/weatherCodes';
 import { weatherProvider } from '../../services/weather/weatherService';
 import { BAND_LABELS, type WeatherNeeds } from '../../engine/weatherNeeds';
 import { useStore } from '../../state/store';
-import { Button, IconButton, Notice, Segmented } from '../primitives';
+import { Button, IconButton, Notice, Segmented, Sheet } from '../primitives';
 import { Icon } from '../Icon';
 import { LocationSheet } from './LocationSheet';
 
@@ -189,7 +189,7 @@ function ManualWeatherPicker() {
       />
       <label className="switch-row small">
         <span>Il pleut ou des averses sont annoncées</span>
-        <input type="checkbox" checked={rain} onChange={(e) => setRain(e.target.checked)} style={{ width: 22, height: 22, accentColor: 'var(--ink)' }} />
+        <input type="checkbox" checked={rain} onChange={(e) => setRain(e.target.checked)} style={{ width: 22, height: 22, accentColor: 'var(--text)' }} />
       </label>
       <Button size="sm" variant="outline" onClick={() => setManualWeather({ band, rain, windy: false })}>
         Utiliser ce temps
@@ -214,5 +214,66 @@ function ManualSummary() {
       Temps {BAND_LABELS[m.band]}
       {m.rain ? ', avec pluie' : ''}. Ces conditions ne viennent pas d’un service météo.
     </Notice>
+  );
+}
+
+/**
+ * Météo réduite à une ligne sobre (lieu · température · conditions) :
+ * elle guide la tenue sans prendre la place de la composition. Le détail
+ * (heures, pluie, vent, saisie manuelle) s'ouvre à la demande.
+ */
+export function WeatherLine() {
+  const { prefs, weather, needs } = useStore();
+  const [open, setOpen] = useState(false);
+  const [locOpen, setLocOpen] = useState(false);
+  const r = weather.result;
+  const snap = r?.snapshot && !r.outdated ? r.snapshot : null;
+
+  let text: string;
+  let icon: 'pin' | 'cloud' | ReturnType<typeof describeWeatherCode>['icon'] = 'cloud';
+  if (weather.manual) {
+    text = `Temps ${BAND_LABELS[weather.manual.band]}${weather.manual.rain ? ', pluie' : ''} · saisi manuellement`;
+  } else if (!prefs.location) {
+    text = 'Choisir un lieu pour adapter la tenue à la météo';
+    icon = 'pin';
+  } else if (snap) {
+    const c = describeWeatherCode(snap.current.weatherCode);
+    icon = c.icon;
+    const parts = [prefs.location.name, `${Math.round(snap.current.temperature)}°`, c.label, `ressenti ${Math.round(snap.current.feelsLike)}°`];
+    if (needs.rain !== 'none' && needs.rainProbability !== null) parts.push(`pluie ${needs.rainProbability} %`);
+    if (r?.freshness === 'cache') parts.push(`données de ${time(snap.timestamp)}`);
+    text = parts.join(' · ');
+  } else if (weather.loading) {
+    text = `Météo de ${prefs.location.name}…`;
+  } else {
+    text = `${prefs.location.name} · météo indisponible`;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="weather-line"
+        onClick={() => (prefs.location || weather.manual ? setOpen(true) : setLocOpen(true))}
+        aria-label={`Météo : ${text}. Voir le détail`}
+      >
+        {weather.loading && !snap ? <span className="spinner" aria-hidden /> : <Icon name={icon} size={18} />}
+        <span className="wl-main">{text}</span>
+        <span className="wl-chev">
+          <Icon name="chevron" size={16} />
+        </span>
+      </button>
+      {open && (
+        <Sheet title="Météo du jour" onClose={() => setOpen(false)}>
+          <WeatherCard />
+          {adviceFor(needs) && (
+            <p className="small" style={{ marginTop: 'var(--s4)' }}>
+              {adviceFor(needs)}
+            </p>
+          )}
+        </Sheet>
+      )}
+      {locOpen && <LocationSheet onClose={() => setLocOpen(false)} />}
+    </>
   );
 }

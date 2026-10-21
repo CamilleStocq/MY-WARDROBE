@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { Availability } from '../../domain/types';
+import { useEffect, useMemo, useState } from 'react';
+import type { Availability, Occasion, SlotName } from '../../domain/types';
 import {
   AVAILABILITY_LABELS,
   CATEGORY_SINGULAR,
@@ -12,15 +12,33 @@ import {
   subcategoryLabel,
 } from '../../domain/taxonomy';
 import { getColor } from '../../domain/colors';
+import { wearWith } from '../../engine/generator';
+import { slotsFor } from '../../engine/rules';
+import { TODAY_EVENT, saveToday } from '../../services/outfitService';
 import { useStore } from '../../state/store';
-import { Button, ColorDot, ConfirmDialog, Notice, Segmented, Sheet } from '../primitives';
-import { GarmentPhoto } from './GarmentImage';
+import { Button, ColorDot, ConfirmDialog, IconButton, Sheet } from '../primitives';
+import { Icon } from '../Icon';
+import { GarmentImg, GarmentPhoto } from './GarmentImage';
 import { GarmentEditor } from './GarmentEditor';
 
+/**
+ * Fiche d'un vêtement — écran de référence de la direction artistique :
+ * barre compacte, grande photo sur fond gris clair, marque + nom, trois actions
+ * discrètes, « À porter avec », bouton noir fixé en bas.
+ */
 export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { garments, setAvailability, removeGarment, favorites, prefs } = useStore();
+  const { garments, setAvailability, removeGarment, favorites, prefs, engineContext, openGarment, toast } = useStore();
   const g = garments.find((x) => x.id === id);
   const [mode, setMode] = useState<'view' | 'edit' | 'photo' | 'confirm'>('view');
+  const [menu, setMenu] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    setShowAll(false);
+    setMenu(false);
+  }, [id]);
+
+  const suggestions = useMemo(() => (g ? wearWith(g, engineContext((prefs.occasions[0] ?? 'quotidien') as Occasion), 12) : []), [g, engineContext, prefs.occasions]);
 
   if (!g) {
     return (
@@ -34,64 +52,142 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
   }
 
   const usedIn = favorites.filter((f) => f.garmentIds.includes(g.id)).length;
+  const inLaundry = g.availability === 'laundry';
+  const subLabel = subcategoryLabel(g.subcategory, prefs.customSubcategories);
+
+  async function createOutfit() {
+    const slot = slotsFor(g!, prefs)[0];
+    await saveToday({
+      slots: slot === 'accessory' ? { accessories: [g!.id] } : { [slot]: g!.id, accessories: [] },
+      locked: [slot === 'accessory' ? 'accessories' : (slot as SlotName)],
+      shown: [],
+      occasion: prefs.occasions[0] ?? 'quotidien',
+      autogen: true,
+      banner: `Tenue composée autour de : ${g!.name}.`,
+    });
+    onClose();
+    window.dispatchEvent(new Event(TODAY_EVENT));
+    window.location.hash = '/today';
+  }
+
+  const shown = showAll ? suggestions : suggestions.slice(0, 6);
 
   return (
     <>
-      <Sheet
-        title={g.name}
-        onClose={onClose}
-        size="wide"
-        footer={
-          <>
-            <Button variant="outline" icon="trash" onClick={() => setMode('confirm')}>
-              Supprimer
-            </Button>
-            <Button variant="secondary" icon="edit" onClick={() => setMode('edit')}>
-              Modifier
-            </Button>
-          </>
-        }
-      >
-        <div className="detail">
-          <div>
-            <GarmentPhoto imageId={g.imageId} size="full" alt={g.name} />
-            <Button variant="ghost" size="sm" icon="camera" onClick={() => setMode('photo')} style={{ marginTop: 'var(--s2)' }}>
-              {g.imageId ? 'Remplacer la photo' : 'Ajouter une photo'}
-            </Button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)' }}>
-            {g.isDemo && <Notice tone="demo">Pièce de démonstration : illustration, pas une photo de votre vêtement.</Notice>}
-            <div className="field">
-              <span className="label">Disponibilité</span>
-              <Segmented<Availability>
-                label="Disponibilité"
-                options={(['available', 'laundry', 'unavailable'] as const).map((a) => ({ value: a, label: AVAILABILITY_LABELS[a] }))}
-                value={g.availability}
-                onChange={(a) => setAvailability(g, a)}
-              />
-              <span className="hint">Les pièces au lavage ou indisponibles ne sont pas proposées dans les tenues.</span>
+      <Sheet title={g.name} onClose={onClose} page>
+        <div className="topnav" style={{ margin: '0 calc(-1 * var(--gutter))' }}>
+          <IconButton icon="back" label="Retour" onClick={onClose} />
+          <span className="eyebrow">{subLabel}</span>
+          <IconButton icon="more" label="Plus d’actions" aria-expanded={menu} onClick={() => setMenu((m) => !m)} />
+          {menu && (
+            <div className="menu" role="menu">
+              {(['available', 'laundry', 'unavailable'] as Availability[])
+                .filter((a) => a !== g.availability)
+                .map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenu(false);
+                      setAvailability(g, a);
+                      toast(`${g.name} : ${AVAILABILITY_LABELS[a].toLowerCase()}`);
+                    }}
+                  >
+                    Marquer « {AVAILABILITY_LABELS[a].toLowerCase()} »
+                  </button>
+                ))}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(false);
+                  setMode('photo');
+                }}
+              >
+                Remplacer la photo
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={() => {
+                  setMenu(false);
+                  setMode('confirm');
+                }}
+              >
+                Supprimer
+              </button>
             </div>
+          )}
+        </div>
+
+        <div className="item">
+          <div className="item-photo photo">
+            <GarmentImg imageId={g.imageId} size="full" alt={g.name} />
+          </div>
+
+          <div className="item-title">
+            <span className="eyebrow">{g.brand || CATEGORY_SINGULAR[g.category]}</span>
+            <h2>{g.name}</h2>
+            {g.availability !== 'available' && <span className="small muted">{AVAILABILITY_LABELS[g.availability]}</span>}
+            {g.isDemo && <span className="small muted">Pièce de démonstration (illustration)</span>}
+          </div>
+
+          <div className="action-row">
+            <button type="button" className="action-tile" aria-pressed={inLaundry} onClick={() => setAvailability(g, inLaundry ? 'available' : 'laundry')}>
+              <Icon name="wash" size={20} />
+              {inLaundry ? 'Au lavage' : 'Lavage'}
+            </button>
+            <button type="button" className="action-tile" onClick={() => setMode('edit')}>
+              <Icon name="edit" size={20} />
+              Modifier
+            </button>
+            <button type="button" className="action-tile" onClick={() => setMode('photo')}>
+              <Icon name="wand" size={20} />
+              Retoucher
+            </button>
+          </div>
+
+          {suggestions.length > 0 && (
+            <section aria-label="À porter avec">
+              <div className="section-head">
+                <h3>À porter avec</h3>
+                {suggestions.length > 6 && (
+                  <button type="button" className="link-btn" onClick={() => setShowAll((v) => !v)}>
+                    {showAll ? 'Moins' : 'Tout voir'}
+                  </button>
+                )}
+              </div>
+              <div className="hscroll">
+                {shown.map((s) => (
+                  <button key={s.id} type="button" className="mini-card" onClick={() => openGarment(s.id)}>
+                    <GarmentPhoto imageId={s.imageId} alt="" compact />
+                    <b>{s.name}</b>
+                    <span>{s.brand || subcategoryLabel(s.subcategory, prefs.customSubcategories)}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <details className="disclosure">
+            <summary>Détails</summary>
             <dl className="props">
-              <dt>Type</dt>
-              <dd>
-                {CATEGORY_SINGULAR[g.category]} · {subcategoryLabel(g.subcategory, prefs.customSubcategories)}
-              </dd>
               <dt>Couleurs</dt>
               <dd>
                 {[g.primaryColor, ...g.secondaryColors].map((c) => (
                   <span key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <ColorDot color={c} size={14} /> {getColor(c).label}
+                    <ColorDot color={c} size={12} /> {getColor(c).label}
                   </span>
                 ))}
               </dd>
               <dt>Motif</dt>
               <dd>{PATTERN_LABELS[g.pattern]}</dd>
               <dt>Saison</dt>
-              <dd>
-                <span className="badge badge-season">{seasonsLabel(g.seasons)}</span>
-              </dd>
-              <dt>Styles</dt>
-              <dd>{g.styles.length ? g.styles.map((s) => <span key={s} className="badge badge-cat">{STYLE_LABELS[s]}</span>) : <span className="muted">Non précisé</span>}</dd>
+              <dd>{seasonsLabel(g.seasons)}</dd>
+              <dt>Style</dt>
+              <dd>{g.styles.length ? g.styles.map((s) => STYLE_LABELS[s]).join(', ') : '—'}</dd>
               <dt>Formalité</dt>
               <dd>{FORMALITY_LABELS[g.formality]}</dd>
               <dt>Chaleur</dt>
@@ -117,8 +213,18 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
               <dt>Ajouté le</dt>
               <dd>{new Date(g.createdAt).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', year: 'numeric' })}</dd>
             </dl>
-            {g.notes && <p className="small">{g.notes}</p>}
-            {usedIn > 0 && <p className="small muted">Présent dans {usedIn} tenue{usedIn > 1 ? 's' : ''} favorite{usedIn > 1 ? 's' : ''}.</p>}
+            {g.notes && <p className="small" style={{ marginTop: 'var(--s3)' }}>{g.notes}</p>}
+          </details>
+
+          <div className="sticky-cta">
+            <Button variant="primary" block size="lg" onClick={createOutfit} disabled={g.availability !== 'available'}>
+              Créer une tenue
+            </Button>
+            {g.availability !== 'available' && (
+              <p className="small muted" style={{ textAlign: 'center', marginTop: 'var(--s2)' }}>
+                Disponible à nouveau pour créer une tenue une fois sorti du lavage.
+              </p>
+            )}
           </div>
         </div>
       </Sheet>

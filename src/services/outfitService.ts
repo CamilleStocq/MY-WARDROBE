@@ -34,7 +34,6 @@ export async function restoreFavorite(o: SavedOutfit): Promise<void> {
 // ---------- historique (diversité des propositions) ----------
 
 const RECENT_KEY = 'history:recent';
-const WORN_KEY = 'history:worn';
 const MAX_RECENT = 30;
 
 export async function getRecent(): Promise<string[][]> {
@@ -46,17 +45,6 @@ export async function pushRecent(slots: OutfitSlots): Promise<string[][]> {
   const list = [sig, ...(await getRecent()).filter((s) => s.join('+') !== sig.join('+'))].slice(0, MAX_RECENT);
   await kv.set(RECENT_KEY, list);
   return list;
-}
-
-export interface WornEntry {
-  date: string;
-  slots: OutfitSlots;
-}
-
-export async function markWorn(slots: OutfitSlots): Promise<void> {
-  const list = (await kv.get<WornEntry[]>(WORN_KEY)) ?? [];
-  const date = new Date().toISOString();
-  await kv.set(WORN_KEY, [{ date, slots }, ...list].slice(0, 60));
 }
 
 // ---------- tenue du jour (survit au rechargement) ----------
@@ -74,6 +62,8 @@ export interface TodayState {
 }
 
 const TODAY_KEY = 'today';
+/** événement émis quand la tenue du jour est modifiée depuis un autre écran */
+export const TODAY_EVENT = 'mw:today-changed';
 export const localDate = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

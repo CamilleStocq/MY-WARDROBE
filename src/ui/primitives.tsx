@@ -221,6 +221,7 @@ export function Sheet({
   footer,
   size,
   headerExtra,
+  page,
 }: {
   title: ReactNode;
   onClose: () => void;
@@ -228,6 +229,8 @@ export function Sheet({
   footer?: ReactNode;
   size?: 'wide' | 'narrow';
   headerExtra?: ReactNode;
+  /** plein écran sur mobile, sans en-tête : le contenu fournit sa propre barre (fiche vêtement) */
+  page?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -273,15 +276,25 @@ export function Sheet({
 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} className={`sheet ${size ?? ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+      <div
+        ref={ref}
+        className={`sheet ${size ?? ''} ${page ? 'page' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={page ? undefined : titleId}
+        aria-label={page && typeof title === 'string' ? title : undefined}
+        tabIndex={-1}
+      >
         <div className="sheet-grip" aria-hidden />
-        <div className="sheet-head">
-          <h2 id={titleId}>{title}</h2>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {headerExtra}
-            <IconButton icon="close" label="Fermer" onClick={onClose} />
+        {!page && (
+          <div className="sheet-head">
+            <h2 id={titleId}>{title}</h2>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {headerExtra}
+              <IconButton icon="close" label="Fermer" onClick={onClose} />
+            </div>
           </div>
-        </div>
+        )}
         <div className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}
       </div>
@@ -355,43 +368,11 @@ export function Notice({
 }
 
 export function EmptyArt({ kind }: { kind: 'wardrobe' | 'favorites' | 'outfit' | 'search' }) {
-  // petites compositions géométriques dans la palette (pas d'illustrations « cartoon »)
-  const shapes = {
-    wardrobe: (
-      <>
-        <rect x="18" y="20" width="56" height="76" rx="14" fill="#F4D9D6" />
-        <rect x="82" y="34" width="56" height="62" rx="14" fill="#E9E2F7" />
-        <path d="M78 22a6 6 0 1 1 6 6c-3 0-6 2-6 5v2l26 16" stroke="#2B2A2E" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        <circle cx="128" cy="24" r="9" fill="#FF7A59" />
-      </>
-    ),
-    favorites: (
-      <>
-        <rect x="24" y="22" width="50" height="66" rx="12" fill="#E4ECE0" transform="rotate(-6 49 55)" />
-        <rect x="70" y="18" width="56" height="74" rx="12" fill="#F4D9D6" transform="rotate(5 98 55)" />
-        <path d="M98 74s-14-8.6-14-18.6A8 8 0 0 1 98 50.6a8 8 0 0 1 14 4.8C112 65.4 98 74 98 74z" fill="#D94C7E" />
-      </>
-    ),
-    outfit: (
-      <>
-        <rect x="20" y="16" width="116" height="92" rx="20" fill="#FAE9E6" />
-        <rect x="42" y="28" width="34" height="40" rx="8" fill="#C9B8E4" />
-        <rect x="80" y="40" width="30" height="52" rx="8" fill="#A9BFA4" />
-        <circle cx="118" cy="30" r="8" fill="#FF7A59" />
-      </>
-    ),
-    search: (
-      <>
-        <rect x="30" y="22" width="96" height="76" rx="18" fill="#E9E2F7" />
-        <circle cx="74" cy="56" r="18" stroke="#2B2A2E" strokeWidth="4" fill="none" />
-        <path d="M88 70l14 14" stroke="#2B2A2E" strokeWidth="4" strokeLinecap="round" />
-      </>
-    ),
-  };
+  const icon: Record<typeof kind, IconName> = { wardrobe: 'hanger', favorites: 'heart', outfit: 'shirt', search: 'search' };
   return (
-    <svg className="empty-art" viewBox="0 0 156 120" aria-hidden>
-      {shapes[kind]}
-    </svg>
+    <span className="empty-art" aria-hidden>
+      <Icon name={icon[kind]} size={28} />
+    </span>
   );
 }
 

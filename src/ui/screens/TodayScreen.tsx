@@ -5,27 +5,22 @@ import { evaluateOutfit, generateOutfit, wardrobeGaps, type GenerationResult } f
 import { signatureOf, subOf, type SlotKey } from '../../engine/rules';
 import { needsSummary } from '../../engine/weatherNeeds';
 import { TREND_BASE } from '../../engine/trends';
-import { loadToday, markWorn, saveToday } from '../../services/outfitService';
+import { TODAY_EVENT, loadToday, localDate, saveToday } from '../../services/outfitService';
 import { useStore } from '../../state/store';
 import { Button, Chip, EmptyState, IconButton, Notice } from '../primitives';
 import { Icon } from '../Icon';
 import { GarmentPhoto } from '../garment/GarmentImage';
-import { OutfitBoard, SLOT_LABELS, moodFor } from '../outfit/OutfitBoard';
+import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
+import { OutfitStack } from '../outfit/OutfitStack';
 import { SlotPicker } from '../outfit/SlotPicker';
-import { WeatherCard, adviceFor } from '../weather/WeatherCard';
+import { WeatherLine } from '../weather/WeatherCard';
 
 type LockKey = SlotName | 'accessories';
-const ORDER: SlotName[] = ['top', 'mid', 'bottom', 'onepiece', 'outer', 'shoes'];
+const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes'];
 
-function greeting(name: string) {
-  const h = new Date().getHours();
-  const hello = h < 5 ? 'Bonsoir' : h < 12 ? 'Bonjour' : h < 18 ? 'Bel après-midi' : 'Bonsoir';
-  return name ? `${hello} ${name} !` : `${hello} !`;
-}
-
-export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | 'settings') => void }) {
+export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | 'settings' | 'calendar') => void }) {
   const store = useStore();
-  const { garments, prefs, needs, favorites, engineContext, rememberProposal, addFavorite, saveFavorite, toast, openGarment } = store;
+  const { garments, prefs, needs, favorites, engineContext, rememberProposal, addFavorite, saveFavorite, toast, openGarment, logWorn, calendar } = store;
   const [loaded, setLoaded] = useState(false);
   const [slots, setSlots] = useState<OutfitSlots | null>(null);
   const [locked, setLocked] = useState<LockKey[]>([]);
@@ -35,35 +30,45 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState<{ slot: SlotKey; currentId?: string } | null>(null);
-  const autogen = useRef(false);
+  const [editOpen, setEditOpen] = useState(false);
+  /** change à chaque nouvelle proposition : les rangées défilantes recalculent alors leurs alternatives */
+  const [listsKey, setListsKey] = useState('init');
+  const [autogenTick, setAutogenTick] = useState(0);
   const pendingLocks = useRef<OutfitSlots | null>(null);
 
   const byId = useMemo(() => new Map(garments.map((g) => [g.id, g])), [garments]);
   const ctx = useMemo(() => engineContext(occasion), [engineContext, occasion]);
 
-  // restauration de la tenue du jour
-  useEffect(() => {
+  // restauration de la tenue du jour (au montage et quand une autre vue la modifie)
+  const restore = useCallback(() => {
     loadToday()
       .then((t) => {
-        if (t) {
-          const hasBase = !!(t.slots.onepiece || (t.slots.top && t.slots.bottom));
-          setSlots(t.autogen || !hasBase ? null : t.slots);
-          setLocked(t.locked as LockKey[]);
-          setShown(t.shown);
-          setOccasion(t.occasion);
-          if (t.banner) setBanner(t.banner);
-          if (t.autogen) {
-            autogen.current = true;
-            pendingLocks.current = t.slots;
-          }
+        if (!t) return;
+        const hasBase = !!(t.slots.onepiece || (t.slots.top && t.slots.bottom));
+        setSlots(t.autogen || !hasBase ? null : t.slots);
+        setListsKey(`restore-${Date.now()}`);
+        setLocked(t.locked as LockKey[]);
+        setShown(t.shown);
+        setOccasion(t.occasion);
+        setGen(null);
+        setBanner(t.banner ?? null);
+        if (t.autogen) {
+          pendingLocks.current = t.slots;
+          setAutogenTick((n) => n + 1);
         }
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
   useEffect(() => {
-    if (!loaded) return;
+    restore();
+    window.addEventListener(TODAY_EVENT, restore);
+    return () => window.removeEventListener(TODAY_EVENT, restore);
+  }, [restore]);
+
+  useEffect(() => {
+    if (!loaded || pendingLocks.current) return;
     saveToday({ slots: slots ?? { accessories: [] }, locked, shown: shown.slice(-40), occasion }).catch(() => undefined);
   }, [loaded, slots, locked, shown, occasion]);
 
@@ -78,12 +83,13 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         }
       }
       setBusy(true);
-      await new Promise((r) => setTimeout(r, 180)); // laisse le temps d'afficher l'état de chargement
+      await new Promise((r) => setTimeout(r, 160)); // laisse le temps d'afficher l'état de chargement
       const res = generateOutfit(ctx, { locked: lockedSlots, exclude: shown });
       setGen(res);
-      setBanner(null);
+      if (!base) setBanner(null);
       if (res.proposal) {
         setSlots(res.proposal.slots);
+        setListsKey(`${res.proposal.signature}-${Date.now()}`);
         setShown((s) => [...s, res.proposal!.signature]);
         rememberProposal(res.proposal.slots);
         // retire les verrous sur des emplacements qui n'existent plus
@@ -94,19 +100,23 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     [ctx, shown, slots, locked, rememberProposal],
   );
 
-  // génération automatique (« s'inspirer d'un favori »)
+  // génération automatique (« créer une tenue » depuis une fiche, « s'inspirer » d'un favori)
   useEffect(() => {
-    if (loaded && autogen.current && garments.length) {
-      autogen.current = false;
-      generate(pendingLocks.current, locked);
-    }
-  }, [loaded, garments.length, generate, locked]);
+    if (!autogenTick || !garments.length || !pendingLocks.current) return;
+    const base = pendingLocks.current;
+    pendingLocks.current = null;
+    generate(base, locked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autogenTick, garments.length]);
 
   const evaluation = useMemo(() => (slots ? evaluateOutfit(slots, ctx) : null), [slots, ctx]);
   const signature = slots ? signatureOf(slots).join('+') : '';
   const savedAs = favorites.find((f) => signatureOf(f.slots).join('+') === signature);
+  const wornEntry = calendar[localDate()];
+  const wornToday = !!wornEntry && signatureOf(wornEntry.slots).join('+') === signature;
   const gaps = useMemo(() => wardrobeGaps(garments), [garments]);
-  const canCompose = garments.some((g) => g.category === 'onepiece' && g.availability === 'available') ||
+  const canCompose =
+    garments.some((g) => g.category === 'onepiece' && g.availability === 'available') ||
     (garments.some((g) => g.category === 'top' && g.availability === 'available') && garments.some((g) => g.category === 'bottom' && g.availability === 'available'));
 
   function toggleLock(k: LockKey) {
@@ -121,6 +131,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     } else {
       setSlots({ ...slots, [slot]: id });
     }
+    setListsKey(`pick-${Date.now()}`);
     setPicker(null);
   }
 
@@ -133,6 +144,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
       setSlots(next);
       setLocked((l) => l.filter((k) => k !== slot));
     }
+    setListsKey(`remove-${Date.now()}`);
     setPicker(null);
   }
 
@@ -162,7 +174,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
             : { summary: needsSummary(needs), feelsLike: needs.feels, band: needs.band, rain: needs.rain, locationName: prefs.location?.name ?? null },
         explanation: evaluation.explanation,
       });
-      toast('Tenue ajoutée à vos favoris', { action: { label: 'Voir', run: () => goTo('favorites') } });
+      toast('Look enregistré dans vos favoris', { action: { label: 'Voir', run: () => goTo('favorites') } });
     } catch {
       /* erreur déjà signalée */
     }
@@ -170,28 +182,116 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
 
   async function wear() {
     if (!slots) return;
-    await markWorn(slots).catch(() => undefined);
+    await logWorn(localDate(), slots, savedAs?.id ?? null);
     await rememberProposal(slots);
     if (savedAs) await saveFavorite({ ...savedAs, lastWornAt: new Date().toISOString() }).catch(() => undefined);
-    toast('C’est noté, bonne journée ! Cette tenue sera moins proposée les prochains jours.');
+    toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
   }
 
   const dateText = new Date().toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = dateText.charAt(0).toUpperCase() + dateText.slice(1);
-  const advice = adviceFor(needs);
-  const mood = moodFor(needs);
 
-  const occasionChips = (
-    <div className="chip-row occasions" role="radiogroup" aria-label="Occasion">
-      {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
-        <Chip key={o} role="radio" pressed={occasion === o} onClick={() => setOccasion(o)}>
-          {OCCASION_LABELS[o]}
-        </Chip>
+  // ---------- en-tête ----------
+  const head = (
+    <>
+      <div className="look-head">
+        <div>
+          <h1>Ton look du jour</h1>
+          <p className="date">
+            {today}
+            {prefs.displayName ? ` · ${prefs.displayName}` : ''}
+          </p>
+        </div>
+        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={() => goTo('settings')} />
+      </div>
+      <WeatherLine />
+      {garments.length > 0 && (
+        <div className="chip-row occasions" role="radiogroup" aria-label="Occasion">
+          {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
+            <Chip key={o} role="radio" pressed={occasion === o} onClick={() => setOccasion(o)}>
+              {OCCASION_LABELS[o]}
+            </Chip>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  const notices = (
+    <>
+      {banner && <Notice tone="info">{banner}</Notice>}
+      {gen?.status === 'impossible' && (
+        <Notice tone="warn" title="Aucune tenue possible avec ces contraintes">
+          {gen.reasons.join(' ')}
+          {locked.length > 0 && ' Essayez de déverrouiller certaines pièces.'}
+        </Notice>
+      )}
+      {gen?.status === 'compromise' && slots && (
+        <Notice tone="warn" title="Meilleure alternative possible">
+          Aucune combinaison de votre garde-robe ne respecte toutes les contraintes météo du jour. Les points d’attention sont indiqués sous la tenue.
+        </Notice>
+      )}
+      {gen?.notices.map((n) => (
+        <Notice key={n} tone="info">
+          {n}
+        </Notice>
       ))}
+    </>
+  );
+
+  // ---------- description courte du look ----------
+  const description = slots && evaluation && (
+    <div className="look-desc">
+      <ul>
+        {evaluation.explanation.slice(0, 3).map((e) => (
+          <li key={e}>{e}</li>
+        ))}
+        {evaluation.warnings.slice(0, 2).map((w) => (
+          <li key={w} className="warn">
+            {w}
+          </li>
+        ))}
+      </ul>
+      {(evaluation.explanation.length > 3 || evaluation.warnings.length > 2) && (
+        <details className="disclosure">
+          <summary>Pourquoi ce look</summary>
+          <div className="look-desc">
+            <ul>
+              {evaluation.explanation.slice(3).map((e) => (
+                <li key={e}>{e}</li>
+              ))}
+              {evaluation.warnings.slice(2).map((w) => (
+                <li key={w} className="warn">
+                  {w}
+                </li>
+              ))}
+            </ul>
+            {evaluation.explanation.some((e) => e.includes(TREND_BASE.label.toLowerCase())) && (
+              <p className="trend-note">
+                Tendances : {TREND_BASE.label.toLowerCase()} {TREND_BASE.season.toLowerCase()}. {TREND_BASE.disclaimer}
+              </p>
+            )}
+          </div>
+        </details>
+      )}
+      <div className="look-links">
+        <button type="button" className="link-btn" onClick={() => setEditOpen((v) => !v)} aria-expanded={editOpen}>
+          {editOpen ? 'Fermer la modification' : 'Modifier la tenue'}
+        </button>
+        {wornToday ? (
+          <span className="small muted">
+            <Icon name="check" size={14} /> Notée dans le calendrier
+          </span>
+        ) : (
+          <button type="button" className="link-btn" onClick={wear}>
+            Je la porte aujourd’hui
+          </button>
+        )}
+      </div>
     </div>
   );
 
-  // ---------- partie principale (composition) ----------
+  // ---------- composition ----------
   let main: React.ReactNode;
   if (!garments.length) {
     main = (
@@ -199,7 +299,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         art="outfit"
         title="Commencez par votre garde-robe"
         actions={
-          <Button variant="primary" size="lg" icon="hanger" onClick={() => goTo('wardrobe')}>
+          <Button variant="primary" onClick={() => goTo('wardrobe')}>
             Ajouter des vêtements
           </Button>
         }
@@ -213,7 +313,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         art="outfit"
         title="Il manque quelques pièces"
         actions={
-          <Button variant="primary" icon="plus" onClick={() => goTo('wardrobe')}>
+          <Button variant="primary" onClick={() => goTo('wardrobe')}>
             Compléter ma garde-robe
           </Button>
         }
@@ -223,101 +323,103 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     );
   } else if (!slots) {
     main = (
-      <div className="board" data-mood={mood}>
-        <div className="generate-hero" style={{ position: 'absolute', inset: 0 }}>
-          <h2>Votre tenue du jour</h2>
-          <p>
-            {needs.source === 'none'
-              ? 'Choisissez votre lieu pour une tenue adaptée à la météo, ou générez-la dès maintenant.'
-              : 'Composée à partir de vos vêtements disponibles et de la météo prévue sur vos heures de sortie.'}
-          </p>
-          <Button variant="primary" size="lg" icon="sparkle" loading={busy} onClick={() => generate()}>
-            Générer ma tenue
-          </Button>
-        </div>
+      <div className="generate-hero">
+        <h2>Votre tenue du jour</h2>
+        <p>
+          {needs.source === 'none'
+            ? 'Choisissez votre lieu pour une tenue adaptée à la météo, ou composez-la dès maintenant.'
+            : 'Composée à partir de vos vêtements disponibles et de la météo prévue sur vos heures de sortie.'}
+        </p>
+        <Button variant="primary" size="lg" loading={busy} onClick={() => generate()}>
+          Composer ma tenue
+        </Button>
       </div>
     );
   } else {
     main = (
-      <div className="board-wrap">
-        <OutfitBoard
-          key={signature}
-          slots={slots}
-          byId={byId}
-          mood={mood}
-          responsive
-          locked={locked.filter((k): k is SlotName => k !== 'accessories')}
-          onPiece={(slot, id) => setPicker({ slot, currentId: id })}
-        />
-        <div className="board-actions">
-          <Button variant="primary" icon="refresh" loading={busy} onClick={() => generate()}>
-            Autre proposition
-          </Button>
-          <IconButton icon="heart" label={savedAs ? 'Déjà dans les favoris' : 'Enregistrer dans les favoris'} filled onClick={save} aria-pressed={!!savedAs} style={savedAs ? { color: 'var(--rose)' } : undefined} />
-          <IconButton icon="check" label="Je porte cette tenue aujourd’hui" filled onClick={wear} />
+      <>
+        <div>
+          <OutfitStack
+            slots={slots}
+            ctx={ctx}
+            listsKey={listsKey}
+            locked={locked.filter((k): k is SlotName => k !== 'accessories')}
+            onChange={(slot, id) => setSlots((cur) => (cur ? { ...cur, [slot]: id } : cur))}
+            onPiece={(slot, id) => setPicker({ slot, currentId: id })}
+            busy={busy}
+          />
+          <p className="stack-hint">Faites glisser une pièce pour en essayer une autre, touchez-la pour plus d’options.</p>
         </div>
 
-        <div className="pieces" aria-label="Pièces de la tenue">
-          {ORDER.filter((s) => slots[s]).map((s) => {
-            const g = byId.get(slots[s]!);
-            const isLocked = locked.includes(s);
-            return (
-              <div className="piece-row" key={s}>
-                <button type="button" className="thumb" style={{ border: 0, padding: 0, background: 'none' }} onClick={() => g && openGarment(g.id)} aria-label={`Voir la fiche : ${g?.name ?? 'pièce supprimée'}`}>
-                  <GarmentPhoto imageId={g?.imageId ?? null} alt="" compact />
-                </button>
-                <div className="info">
-                  <b>{g?.name ?? 'Pièce supprimée'}</b>
-                  <span>{SLOT_LABELS[s]}</span>
-                </div>
-                <IconButton icon={isLocked ? 'lock' : 'unlock'} label={isLocked ? `Déverrouiller : ${g?.name}` : `Verrouiller : ${g?.name}`} aria-pressed={isLocked} onClick={() => toggleLock(s)} />
-                <IconButton icon="swap" label={`Remplacer : ${g?.name}`} onClick={() => setPicker({ slot: s, currentId: slots[s] })} />
-              </div>
-            );
-          })}
-          {slots.accessories.map((id) => {
-            const g = byId.get(id);
-            return (
-              <div className="piece-row" key={id}>
-                <button type="button" className="thumb" style={{ border: 0, padding: 0, background: 'none' }} onClick={() => g && openGarment(g.id)} aria-label={`Voir la fiche : ${g?.name ?? 'pièce supprimée'}`}>
-                  <GarmentPhoto imageId={g?.imageId ?? null} alt="" compact />
-                </button>
-                <div className="info">
-                  <b>{g?.name ?? 'Pièce supprimée'}</b>
-                  <span>Accessoire</span>
-                </div>
-                <IconButton icon="swap" label={`Changer : ${g?.name}`} onClick={() => setPicker({ slot: 'accessory', currentId: id })} />
-                <IconButton icon="close" label={`Retirer : ${g?.name}`} onClick={() => removePiece('accessory', id)} />
-              </div>
-            );
-          })}
-          <div className="add-row">
-            {!slots.outer && garments.some((g) => g.category === 'outerwear' && g.availability === 'available') && (
-              <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'outer' })}>
-                Ajouter une veste
-              </Button>
-            )}
-            {!slots.mid && slots.top && !subOf(byId.get(slots.top)!, prefs).layer && garments.some((g) => g.category === 'top' && subOf(g, prefs).layer && g.availability === 'available') && (
-              <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'mid' })}>
-                Ajouter une maille
-              </Button>
-            )}
-            {slots.accessories.length < 3 && garments.some((g) => g.category === 'accessory' && g.availability === 'available' && !slots.accessories.includes(g.id)) && (
-              <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'accessory' })}>
-                Ajouter un accessoire
-              </Button>
-            )}
-            {slots.accessories.length > 0 && (
-              <Button size="sm" variant={locked.includes('accessories') ? 'secondary' : 'ghost'} icon={locked.includes('accessories') ? 'lock' : 'unlock'} onClick={() => toggleLock('accessories')} aria-pressed={locked.includes('accessories')}>
-                {locked.includes('accessories') ? 'Accessoires verrouillés' : 'Garder les accessoires'}
-              </Button>
-            )}
-          </div>
-        </div>
+        <div className="mobile-block">{description}</div>
+
+        {editOpen && (
+          <section aria-label="Modifier la tenue">
+            <div className="pieces">
+              {ORDER.filter((s) => slots[s]).map((s) => {
+                const g = byId.get(slots[s]!);
+                const isLocked = locked.includes(s);
+                return (
+                  <div className="piece-row" key={s}>
+                    <button type="button" className="thumb" style={{ border: 0, padding: 0, background: 'none' }} onClick={() => g && openGarment(g.id)} aria-label={`Voir la fiche : ${g?.name ?? 'pièce supprimée'}`}>
+                      <GarmentPhoto imageId={g?.imageId ?? null} alt="" compact />
+                    </button>
+                    <div className="info">
+                      <b>{g?.name ?? 'Pièce supprimée'}</b>
+                      <span>{SLOT_LABELS[s]}</span>
+                    </div>
+                    <IconButton icon={isLocked ? 'lock' : 'unlock'} label={isLocked ? `Déverrouiller : ${g?.name}` : `Verrouiller : ${g?.name}`} aria-pressed={isLocked} onClick={() => toggleLock(s)} />
+                    <IconButton icon="swap" label={`Remplacer : ${g?.name}`} onClick={() => setPicker({ slot: s, currentId: slots[s] })} />
+                  </div>
+                );
+              })}
+              {slots.accessories.map((id) => {
+                const g = byId.get(id);
+                return (
+                  <div className="piece-row" key={id}>
+                    <button type="button" className="thumb" style={{ border: 0, padding: 0, background: 'none' }} onClick={() => g && openGarment(g.id)} aria-label={`Voir la fiche : ${g?.name ?? 'pièce supprimée'}`}>
+                      <GarmentPhoto imageId={g?.imageId ?? null} alt="" compact />
+                    </button>
+                    <div className="info">
+                      <b>{g?.name ?? 'Pièce supprimée'}</b>
+                      <span>Accessoire</span>
+                    </div>
+                    <IconButton icon="swap" label={`Changer : ${g?.name}`} onClick={() => setPicker({ slot: 'accessory', currentId: id })} />
+                    <IconButton icon="close" label={`Retirer : ${g?.name}`} onClick={() => removePiece('accessory', id)} />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="add-row">
+              {!slots.outer && garments.some((g) => g.category === 'outerwear' && g.availability === 'available') && (
+                <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'outer' })}>
+                  Veste
+                </Button>
+              )}
+              {!slots.mid && slots.top && byId.get(slots.top) && !subOf(byId.get(slots.top)!, prefs).layer && garments.some((g) => g.category === 'top' && subOf(g, prefs).layer && g.availability === 'available') && (
+                <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'mid' })}>
+                  Maille
+                </Button>
+              )}
+              {slots.accessories.length < 3 && garments.some((g) => g.category === 'accessory' && g.availability === 'available' && !slots.accessories.includes(g.id)) && (
+                <Button size="sm" variant="outline" icon="plus" onClick={() => setPicker({ slot: 'accessory' })}>
+                  Accessoire
+                </Button>
+              )}
+              {slots.accessories.length > 0 && (
+                <Button size="sm" variant="ghost" icon={locked.includes('accessories') ? 'lock' : 'unlock'} onClick={() => toggleLock('accessories')} aria-pressed={locked.includes('accessories')}>
+                  {locked.includes('accessories') ? 'Accessoires gardés' : 'Garder les accessoires'}
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
 
         {gen && gen.alternatives.length > 0 && (
           <section aria-label="Autres looks possibles">
-            <h3 style={{ marginBottom: 'var(--s3)' }}>Autres looks possibles</h3>
+            <div className="section-head">
+              <h3>Autres looks</h3>
+            </div>
             <div className="alts">
               {gen.alternatives.map((a) => (
                 <button
@@ -326,80 +428,51 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
                   className="alt"
                   onClick={() => {
                     setSlots(a.slots);
+                    setListsKey(`alt-${a.signature}-${Date.now()}`);
                     setShown((s) => [...s, a.signature]);
                     rememberProposal(a.slots);
                     setGen({ ...gen, alternatives: gen.alternatives.filter((x) => x !== a).concat(gen.proposal && gen.proposal.signature !== a.signature ? [gen.proposal] : []), proposal: a });
                   }}
                   aria-label="Choisir ce look"
                 >
-                  <OutfitBoard slots={a.slots} byId={byId} mood={mood} compact />
-                  <span>Choisir ce look</span>
+                  <OutfitBoard slots={a.slots} byId={byId} mood="neutral" compact />
                 </button>
               ))}
             </div>
           </section>
         )}
-      </div>
+
+        <div className="look-cta sticky-cta" style={{ bottom: 'calc(var(--nav-h) + var(--safe-b))' }}>
+          <Button variant="primary" size="lg" loading={busy} onClick={() => generate()} style={{ flex: 1 }}>
+            Générer une autre tenue
+          </Button>
+          <button
+            type="button"
+            className={`fav-toggle ${savedAs ? 'is-on' : ''}`}
+            onClick={save}
+            aria-pressed={!!savedAs}
+            aria-label={savedAs ? 'Look enregistré dans les favoris' : 'Enregistrer ce look en favori'}
+            title={savedAs ? 'Enregistré dans les favoris' : 'Enregistrer en favori'}
+          >
+            <Icon name="heart" size={22} filled={!!savedAs} />
+          </button>
+        </div>
+      </>
     );
   }
-
-  // ---------- colonne d'informations ----------
-  const statusNotices = (
-    <>
-      {banner && <Notice tone="info">{banner}</Notice>}
-      {gen?.status === 'impossible' && (
-        <Notice tone="warn" title="Aucune tenue possible avec ces contraintes">
-          {gen.reasons.join(' ')}
-          {locked.length > 0 && ' Essayez de déverrouiller certaines pièces.'}
-        </Notice>
-      )}
-      {gen?.status === 'compromise' && slots && (
-        <Notice tone="warn" title="Meilleure alternative possible, mais pas idéale">
-          Aucune combinaison de votre garde-robe ne respecte toutes les contraintes météo du jour. Les points d’attention sont détaillés ci-dessous.
-        </Notice>
-      )}
-      {gen?.notices.map((n) => (
-        <Notice key={n} tone="info">
-          {n}
-        </Notice>
-      ))}
-    </>
-  );
 
   return (
     <div className="today">
       <div className="today-side">
-        <div className="greeting">
-          <p className="date">{today}</p>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--s3)' }}>
-            <h1>
-              {greeting(prefs.displayName)}
-              <br />
-              On s’habille comment aujourd’hui ?
-            </h1>
-            <IconButton icon="user" label="Profil et préférences" className="profile-btn mobile-only" filled onClick={() => goTo('settings')} />
-          </div>
-        </div>
-        <WeatherCard />
-        {advice && <p className="advice">{advice}</p>}
-        {garments.length > 0 && occasionChips}
-        <div className="desktop-block">{statusNotices}</div>
-        {slots && evaluation && (
-          <div className="why desktop-block">
-            <WhyBlock explanation={evaluation.explanation} warnings={evaluation.warnings} />
-          </div>
-        )}
+        {head}
+        <div className="desktop-block">{notices}</div>
+        <div className="desktop-block">{description}</div>
       </div>
-      <div className="today-main" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)' }}>
+      <div className="today-main">
         <div className="mobile-block" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s2)' }}>
-          {statusNotices}
+          {notices}
         </div>
         {main}
-        {slots && evaluation && (
-          <div className="why mobile-block">
-            <WhyBlock explanation={evaluation.explanation} warnings={evaluation.warnings} />
-          </div>
-        )}
       </div>
 
       {picker && slots && (
@@ -410,11 +483,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
           currentId={picker.currentId}
           locked={picker.slot !== 'accessory' && locked.includes(picker.slot)}
           onPick={(id) => replace(picker.slot, id, picker.currentId)}
-          onRemove={
-            picker.currentId && ['mid', 'outer', 'accessory', 'shoes'].includes(picker.slot)
-              ? () => removePiece(picker.slot, picker.currentId!)
-              : undefined
-          }
+          onRemove={picker.currentId && ['mid', 'outer', 'accessory', 'shoes'].includes(picker.slot) ? () => removePiece(picker.slot, picker.currentId!) : undefined}
           onToggleLock={picker.currentId && picker.slot !== 'accessory' ? () => toggleLock(picker.slot as SlotName) : undefined}
           onOpenDetail={(id) => {
             setPicker(null);
@@ -424,32 +493,5 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         />
       )}
     </div>
-  );
-}
-
-function WhyBlock({ explanation, warnings }: { explanation: string[]; warnings: string[] }) {
-  return (
-    <>
-      <h2>Pourquoi ce look ?</h2>
-      <ul>
-        {explanation.map((e) => (
-          <li key={e}>{e}</li>
-        ))}
-      </ul>
-      {warnings.length > 0 && (
-        <div className="warnings" style={{ marginTop: 'var(--s4)' }}>
-          {warnings.map((w) => (
-            <Notice key={w} tone="warn">
-              {w}
-            </Notice>
-          ))}
-        </div>
-      )}
-      {explanation.some((e) => e.includes(TREND_BASE.label.toLowerCase())) && (
-        <p className="trend-note">
-          <Icon name="info" size={13} /> Tendances : {TREND_BASE.label.toLowerCase()} {TREND_BASE.season.toLowerCase()}, rédigée le {new Date(TREND_BASE.writtenAt).toLocaleDateString('fr-BE')}. {TREND_BASE.disclaimer}
-        </p>
-      )}
-    </>
   );
 }

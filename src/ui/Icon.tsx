@@ -39,6 +39,8 @@ const PATHS = {
   upload: 'M12 20V9M7 14l5-5 5 5M5 4h14',
   wash: 'M4 6h16l-1.5 12.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5L4 6zM4 10c2 1.3 4 1.3 6 0s4-1.3 6 0 3 1 4 .5',
   shirt: 'M9 4L4 6.5l1.5 4.5L8 10v10h8V10l2.5 1L20 6.5 15 4c-.5 1.5-1.7 2.3-3 2.3S9.5 5.5 9 4z',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  calendar: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-12zM4 10h16M8.5 3v4M15.5 3v4M8 14h2M14 14h2M8 17h2',
   rotate: 'M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5',
   eraser: 'M15.5 4.5l4 4L10 18H6l-2.5-2.5L15.5 4.5zM9.5 9.5l5 5M8 21h12',
   brush: 'M18.5 3.5l2 2-9 9-2-2 9-9zM9.5 12.5c-2 0-4 1.5-4 4 0 1.5-1 2.5-2.5 2.5 3 2 8 1.5 8.5-2.5',
@@ -59,7 +61,7 @@ export function Icon({ name, size = 22, filled = false, title }: { name: IconNam
       viewBox="0 0 24 24"
       fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden={title ? undefined : true}

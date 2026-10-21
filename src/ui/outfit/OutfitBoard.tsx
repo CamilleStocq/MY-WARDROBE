@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import type { Garment, OutfitSlots } from '../../domain/types';
 import type { SlotKey } from '../../engine/rules';
 import type { WeatherNeeds } from '../../engine/weatherNeeds';
@@ -31,34 +31,26 @@ export const SLOT_LABELS: Record<SlotKey, string> = {
   accessory: 'Accessoire',
 };
 
-export function layoutFor(slots: OutfitSlots, landscape: boolean): Placement[] {
+/**
+ * Composition compacte « à plat », dans l'esprit des calendriers de tenues :
+ * colonne principale (haut au-dessus du bas, ou pièce complète), veste à côté,
+ * chaussures en bas, accessoires dans un coin. Pièces droites, sans rotation.
+ */
+export function layoutFor(slots: OutfitSlots): Placement[] {
   const out: Placement[] = [];
   const hasOuter = !!slots.outer;
-  const add = (slot: SlotKey, id: string | undefined, p: Omit<Placement, 'slot' | 'id'>) => id && out.push({ slot, id, ...p });
-
-  if (!landscape) {
-    const mx = hasOuter ? 36 : 26;
-    add('outer', slots.outer, { x: 1, y: 8, w: 42, h: 54, rot: -6, z: 1 });
-    add('onepiece', slots.onepiece, { x: mx - 2, y: 4, w: 52, h: 72, rot: 0, z: 2 });
-    add('bottom', slots.bottom, { x: mx + 2, y: 37, w: 42, h: 46, rot: 1, z: 2 });
-    add('top', slots.top, { x: mx, y: 3, w: 46, h: 36, rot: -2, z: 3 });
-    add('mid', slots.mid, { x: Math.min(mx + 26, 62), y: 12, w: 36, h: 30, rot: 5, z: 4 });
-    add('shoes', slots.shoes, { x: 64, y: 71, w: 32, h: 26, rot: 7, z: 5 });
-    const acc = hasOuter
-      ? [{ x: 3, y: 64, w: 28, h: 22 }, { x: 8, y: 82, w: 22, h: 16 }, { x: 36, y: 84, w: 18, h: 14 }]
-      : [{ x: 2, y: 44, w: 24, h: 22 }, { x: 3, y: 68, w: 22, h: 20 }, { x: 4, y: 88, w: 18, h: 10 }];
-    slots.accessories.slice(0, 3).forEach((id, i) => add('accessory', id, { ...acc[i], rot: i % 2 ? 6 : -8, z: 6 }));
-  } else {
-    const mx = hasOuter ? 30 : 18;
-    add('outer', slots.outer, { x: 2, y: 6, w: 28, h: 66, rot: -5, z: 1 });
-    add('onepiece', slots.onepiece, { x: mx, y: 4, w: 32, h: 90, rot: 0, z: 2 });
-    add('bottom', slots.bottom, { x: mx + 2, y: 44, w: 26, h: 52, rot: 1, z: 2 });
-    add('top', slots.top, { x: mx, y: 3, w: 28, h: 44, rot: -2, z: 3 });
-    add('mid', slots.mid, { x: mx + 22, y: 8, w: 24, h: 38, rot: 5, z: 4 });
-    add('shoes', slots.shoes, { x: 72, y: 62, w: 24, h: 32, rot: 7, z: 5 });
-    const acc = [{ x: 76, y: 6, w: 20, h: 26 }, { x: 78, y: 34, w: 16, h: 22 }, { x: hasOuter ? 6 : 2, y: 76, w: 16, h: 18 }];
-    slots.accessories.slice(0, 3).forEach((id, i) => add('accessory', id, { ...acc[i], rot: i % 2 ? -5 : 6, z: 6 }));
-  }
+  const add = (slot: SlotKey, id: string | undefined, p: Omit<Placement, 'slot' | 'id' | 'rot'>) => id && out.push({ slot, id, rot: 0, ...p });
+  const mx = hasOuter ? 2 : 20; // colonne principale décalée quand il n'y a pas de veste
+  add('outer', slots.outer, { x: 50, y: 2, w: 48, h: 60, z: 1 });
+  add('onepiece', slots.onepiece, { x: mx, y: 2, w: 52, h: 78, z: 2 });
+  add('bottom', slots.bottom, { x: mx + 4, y: 40, w: 44, h: 50, z: 2 });
+  add('top', slots.top, { x: mx, y: 2, w: 52, h: 40, z: 3 });
+  add('mid', slots.mid, { x: mx + 22, y: 8, w: 40, h: 34, z: 4 });
+  add('shoes', slots.shoes, hasOuter ? { x: 56, y: 70, w: 38, h: 26, z: 5 } : { x: 2, y: 74, w: 30, h: 22, z: 5 });
+  const acc = hasOuter
+    ? [{ x: 2, y: 82, w: 18, h: 16 }, { x: 22, y: 86, w: 14, h: 12 }]
+    : [{ x: 74, y: 4, w: 24, h: 24 }, { x: 76, y: 32, w: 20, h: 20 }];
+  slots.accessories.slice(0, 2).forEach((id, i) => add('accessory', id, { ...acc[i], z: 6 }));
   return out;
 }
 
@@ -70,20 +62,6 @@ export function moodFor(needs: WeatherNeeds | null): string {
   return 'warm';
 }
 
-function useWide(enabled: boolean) {
-  const q = '(min-width: 960px)';
-  const [wide, setWide] = useState(() => enabled && typeof matchMedia !== 'undefined' && matchMedia(q).matches);
-  useEffect(() => {
-    if (!enabled || typeof matchMedia === 'undefined') return;
-    const m = matchMedia(q);
-    const fn = () => setWide(m.matches);
-    fn();
-    m.addEventListener('change', fn);
-    return () => m.removeEventListener('change', fn);
-  }, [enabled]);
-  return wide;
-}
-
 export function OutfitBoard({
   slots,
   byId,
@@ -91,7 +69,6 @@ export function OutfitBoard({
   locked = [],
   onPiece,
   compact,
-  responsive,
   label,
 }: {
   slots: OutfitSlots;
@@ -100,12 +77,9 @@ export function OutfitBoard({
   locked?: string[];
   onPiece?: (slot: SlotKey, id: string) => void;
   compact?: boolean;
-  /** passe en composition paysage sur grand écran */
-  responsive?: boolean;
   label?: string;
 }) {
-  const wide = useWide(!!responsive);
-  const placements = layoutFor(slots, wide);
+  const placements = layoutFor(slots);
   const names = placements.map((p) => byId.get(p.id)?.name ?? 'pièce supprimée').join(', ');
 
   return (
@@ -114,7 +88,6 @@ export function OutfitBoard({
       data-mood={mood}
       role={compact ? 'img' : 'group'}
       aria-label={label ?? `Tenue composée de : ${names}`}
-      style={compact ? undefined : undefined}
     >
       {placements.map((p, i) => {
         const g = byId.get(p.id);

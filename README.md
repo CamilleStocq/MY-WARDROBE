@@ -38,6 +38,18 @@ src/
 - **Météo** : [Open-Meteo](https://open-meteo.com/) (sans clé, CC BY 4.0, modèles KNMI HARMONIE / ICON-D2 pour la Belgique). L'IRM ne propose pas d'API de prévisions utilisable directement depuis un navigateur (service WFS sans CORS, grilles de modèle). Le fournisseur est isolé derrière l'interface `WeatherProvider` (`src/services/weather/provider.ts`).
 - **Tendances** : base éditoriale rédigée manuellement (`src/engine/trends.ts`), clairement signalée comme telle dans l'interface.
 
+## Écrans
+
+- **Garde-robe** : catalogue photographique (vignettes gris clair), recherche, catégories, filtres et tri.
+- **Fiche vêtement** (écran de référence du design) : grande photo, marque et nom, actions Lavage / Modifier / Retoucher, suggestions « À porter avec » calculées par le moteur, bouton « Créer une tenue ».
+- **Outfit du jour** : météo résumée en une ligne, tenue en rangées défilantes (faire glisser une pièce pour en essayer une autre), courte explication, « Générer une autre tenue », favori, « Je la porte aujourd'hui ».
+- **Calendrier** : historique mensuel des tenues portées, pièce la plus portée du mois, série de jours consécutifs.
+- **Favoris** et **Profil**.
+
+## Direction artistique
+
+Application de mode minimaliste et photographique, définie par les variables de `src/styles/app.css` : blanc `#FFFFFF`, surfaces photo `#F5F5F5`, texte `#111111` / `#858585`, bordures `#EAEAEA`, boutons noirs. Typographie système (SF Pro sur iPhone, Inter ailleurs). Aucune couleur décorative : seuls les vêtements apportent la couleur.
+
 ## Limites connues de la V1
 
 - Les données vivent sur un seul appareil/navigateur. Utiliser **Profil → Télécharger une sauvegarde** régulièrement. Sur iPhone, Safari peut effacer les données d'un site non utilisé pendant 7 jours : installer l'app sur l'écran d'accueil l'évite.

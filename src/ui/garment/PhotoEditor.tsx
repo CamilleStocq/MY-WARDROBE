@@ -432,9 +432,9 @@ export function PhotoEditor({
                   Taille du pinceau
                 </label>
                 <div className="range-row">
-                  <span className="dot" style={{ width: 8, height: 8, background: 'var(--ink)' }} aria-hidden />
+                  <span className="dot" style={{ width: 8, height: 8, background: 'var(--text)' }} aria-hidden />
                   <input id="brush-size" type="range" min={6} max={60} value={brush} onChange={(e) => setBrush(Number(e.target.value))} />
-                  <span className="dot" style={{ width: 22, height: 22, background: 'var(--ink)' }} aria-hidden />
+                  <span className="dot" style={{ width: 22, height: 22, background: 'var(--text)' }} aria-hidden />
                 </div>
                 <span className="hint">{tool === 'erase' ? 'Passez le doigt sur ce qui doit disparaître.' : 'Passez le doigt pour faire réapparaître une partie effacée par erreur.'}</span>
               </div>

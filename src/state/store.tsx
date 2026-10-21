@@ -10,6 +10,7 @@ import * as outfitsApi from '../services/outfitService';
 import { loadPreferences, savePreferences } from '../services/preferencesService';
 import { getWeather, type WeatherResult } from '../services/weather/weatherService';
 import { loadDemoWardrobe, removeDemoWardrobe } from '../services/demoData';
+import { clearWornDay, loadCalendar, recentlyWorn, setWornDay, type Calendar } from '../services/calendarService';
 
 export interface ToastMsg {
   id: number;
@@ -31,6 +32,7 @@ interface Store {
   favorites: SavedOutfit[];
   prefs: UserPreferences;
   recent: string[][];
+  calendar: Calendar;
   weather: WeatherState;
   needs: WeatherNeeds;
 
@@ -44,6 +46,11 @@ interface Store {
   removeFavorite: (o: SavedOutfit) => Promise<void>;
 
   setPrefs: (p: UserPreferences) => Promise<void>;
+  logWorn: (date: string, slots: OutfitSlots, outfitId?: string | null) => Promise<void>;
+  clearWorn: (date: string) => Promise<void>;
+  /** ouverture du parcours « ajouter un vêtement » depuis n'importe quel écran */
+  adding: boolean;
+  setAdding: (v: boolean) => void;
   refreshWeather: (force?: boolean) => Promise<void>;
   setManualWeather: (m: ManualWeather | null) => void;
   rememberProposal: (slots: OutfitSlots) => Promise<void>;
@@ -76,6 +83,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<SavedOutfit[]>([]);
   const [prefs, setPrefsState] = useState<UserPreferences>(defaultPreferences);
   const [recent, setRecent] = useState<string[][]>([]);
+  const [calendar, setCalendar] = useState<Calendar>({});
+  const [adding, setAdding] = useState(false);
   const [weather, setWeather] = useState<WeatherState>({ result: null, loading: false, manual: null });
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -99,12 +108,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const reloadAll = useCallback(async () => {
     try {
-      const [g, f, p, r] = await Promise.all([
+      const [g, f, p, r, c] = await Promise.all([
         garmentsApi.listGarments(),
         outfitsApi.listFavorites(),
         loadPreferences(),
         outfitsApi.getRecent(),
+        loadCalendar(),
       ]);
+      setCalendar(c);
       setGarments(g);
       setFavorites(f);
       setPrefsState(p);
@@ -270,6 +281,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [fail],
   );
 
+  const logWorn = useCallback(
+    async (date: string, slots: OutfitSlots, outfitId: string | null = null) => {
+      try {
+        setCalendar(await setWornDay(date, slots, outfitId));
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [fail],
+  );
+
+  const clearWorn = useCallback(
+    async (date: string) => {
+      try {
+        setCalendar(await clearWornDay(date));
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [fail],
+  );
+
   const rememberProposal = useCallback(async (slots: OutfitSlots) => {
     try {
       setRecent(await outfitsApi.pushRecent(slots));
@@ -285,10 +318,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       prefs,
       occasion,
       season: currentSeason(),
-      recent,
+      // tenues réellement portées ces 14 derniers jours d'abord, puis les propositions récentes
+      recent: [...recentlyWorn(calendar), ...recent],
       favorites: favorites.map((f) => [f.slots.top, f.slots.mid, f.slots.bottom, f.slots.onepiece, f.slots.outer, f.slots.shoes].filter((x): x is string => !!x).sort()),
     }),
-    [garments, needs, prefs, recent, favorites],
+    [garments, needs, prefs, recent, favorites, calendar],
   );
 
   const loadDemo = useCallback(async () => {
@@ -318,6 +352,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     favorites,
     prefs,
     recent,
+    calendar,
     weather,
     needs,
     createGarment,
@@ -328,6 +363,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveFavorite,
     removeFavorite,
     setPrefs,
+    logWorn,
+    clearWorn,
+    adding,
+    setAdding,
     refreshWeather,
     setManualWeather,
     rememberProposal,

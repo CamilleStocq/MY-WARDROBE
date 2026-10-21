@@ -38,6 +38,8 @@ export interface Garment {
   id: string;
   schemaVersion: 1;
   name: string;
+  /** marque (facultatif) */
+  brand: string;
   category: GarmentCategory;
   /** clé de sous-catégorie (voir taxonomy.ts), ex. "jean", "pull" */
   subcategory: string;

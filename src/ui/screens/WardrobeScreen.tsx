@@ -3,7 +3,7 @@ import type { Availability, Garment, GarmentCategory, Season, Style } from '../.
 import { ALL_SEASONS, ALL_STYLES, AVAILABILITY_LABELS, CATEGORY_LABELS, CATEGORY_ORDER, SEASON_LABELS, STYLE_LABELS, subcategoryLabel } from '../../domain/taxonomy';
 import { getColor } from '../../domain/colors';
 import { useStore } from '../../state/store';
-import { Button, Chip, ChipGroup, ColorPicker, EmptyState, Field, IconButton, Notice, Segmented, Sheet } from '../primitives';
+import { Button, ChipGroup, ColorPicker, EmptyState, Field, IconButton, Segmented, Sheet } from '../primitives';
 import { GarmentCard } from '../garment/GarmentCard';
 import { GarmentEditor } from '../garment/GarmentEditor';
 import { Icon } from '../Icon';
@@ -104,18 +104,11 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
       <Header count={garments.length} onAdd={() => setAdding(true)} onProfile={onProfile} laundry={laundry} />
 
       {hasDemo && (
-        <div style={{ marginBottom: 'var(--s4)' }}>
-          <Notice
-            tone="demo"
-            title="Dressing de démonstration"
-            actions={
-              <Button size="sm" variant="outline" onClick={removeDemo}>
-                Retirer les pièces de démo
-              </Button>
-            }
-          >
-            Les pièces marquées « Démo » sont des illustrations. Elles disparaîtront dès que vous les retirerez.
-          </Notice>
+        <div className="inline-notice">
+          <span>Les pièces « Démo » sont des illustrations.</span>
+          <button type="button" className="link-btn" onClick={removeDemo}>
+            Les retirer
+          </button>
         </div>
       )}
 
@@ -129,18 +122,19 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
             <input id="w-search" className="input" type="search" placeholder="Rechercher" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
           <div className="filter-btn">
-            <IconButton icon="filter" label="Filtres et tri" filled onClick={() => setShowFilters(true)} />
+            <IconButton icon="filter" label="Filtres et tri" onClick={() => setShowFilters(true)} />
             {activeFilterCount > 0 && <span className="pip" aria-hidden>{activeFilterCount}</span>}
           </div>
         </div>
-        <div className="chip-row" role="radiogroup" aria-label="Catégorie">
-          <Chip role="radio" pressed={category === 'all'} onClick={() => setCategory('all')}>
-            Tout <span className="count">{garments.length}</span>
-          </Chip>
+        <div className="tabs-text" role="radiogroup" aria-label="Catégorie">
+          <button type="button" role="radio" aria-checked={category === 'all'} onClick={() => setCategory('all')}>
+            Tout<span className="count">{garments.length}</span>
+          </button>
           {CATEGORY_ORDER.filter((c) => counts.get(c)).map((c) => (
-            <Chip key={c} role="radio" pressed={category === c} onClick={() => setCategory(c)}>
-              {CATEGORY_LABELS[c]} <span className="count">{counts.get(c)}</span>
-            </Chip>
+            <button key={c} type="button" role="radio" aria-checked={category === c} onClick={() => setCategory(c)}>
+              {CATEGORY_LABELS[c]}
+              <span className="count">{counts.get(c)}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -224,11 +218,6 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
         </Sheet>
       )}
 
-      <div className="fab-holder">
-        <Button variant="primary" size="lg" icon="plus" className="fab mobile-only-fab" onClick={() => setAdding(true)}>
-          Ajouter
-        </Button>
-      </div>
       {adding && <GarmentEditor onClose={() => setAdding(false)} />}
     </>
   );
@@ -246,13 +235,16 @@ function Header({ count, onAdd, onProfile, laundry = 0 }: { count: number; onAdd
           </p>
         )}
       </div>
-      <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'center' }}>
+      <div className="head-actions">
         {count > 0 && (
-          <Button variant="secondary" icon="plus" className="desktop-only" onClick={onAdd}>
-            Ajouter un vêtement
-          </Button>
+          <>
+            <Button variant="primary" size="sm" icon="plus" className="desktop-only" onClick={onAdd}>
+              Ajouter un vêtement
+            </Button>
+            <IconButton icon="plus" label="Ajouter un vêtement" className="mobile-only" onClick={onAdd} />
+          </>
         )}
-        <IconButton icon="user" label="Profil et préférences" className="profile-btn mobile-only" filled onClick={onProfile} />
+        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={onProfile} />
       </div>
     </div>
   );

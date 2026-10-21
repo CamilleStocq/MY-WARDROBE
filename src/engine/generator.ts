@@ -1,4 +1,4 @@
-import type { Garment, OutfitSlots, SlotName } from '../domain/types';
+import type { Garment, OutfitSlots, SlotName, TemperatureBand } from '../domain/types';
 import { STYLE_LABELS, OCCASION_LABELS } from '../domain/taxonomy';
 import { getColor } from '../domain/colors';
 import {
@@ -10,11 +10,12 @@ import {
   targetFormality,
   viewOf,
   weatherIssue,
+  slotsFor,
   type EngineContext,
   type ScoreBreakdown,
   type SlotKey,
 } from './rules';
-import { BAND_LABELS } from './weatherNeeds';
+import { BAND_LABELS, deriveNeeds } from './weatherNeeds';
 import { TREND_BASE } from './trends';
 import { BASE_BEAM, PICK_AMONG, PICK_SHARPNESS } from './weights';
 
@@ -511,4 +512,46 @@ export function wardrobeGaps(garments: Garment[]): string[] {
   if (count('shoes') === 0) reasons.push('Ajoutez une paire de chaussures pour des tenues complètes.');
   if (count('outerwear') === 0) reasons.push('Une veste ou un manteau permettra de s’adapter au froid et à la pluie.');
   return reasons;
+}
+
+// ---------------------------------------------------------------------------
+// « À porter avec » (fiche vêtement) : associations hors météo du jour, mais
+// cohérentes avec la saison de la pièce (un manteau appelle des pièces d'hiver)
+// ---------------------------------------------------------------------------
+
+export function seasonBandFor(g: Garment): TemperatureBand {
+  const s = g.seasons;
+  const winterOnly = s.length > 0 && s.every((x) => x === 'hiver' || x === 'automne');
+  const summerOnly = s.length > 0 && s.every((x) => x === 'ete' || x === 'printemps');
+  if (g.warmth >= 4 || winterOnly) return 'cold';
+  if (summerOnly || (g.warmth <= 1 && g.category !== 'top' && g.category !== 'accessory')) return 'warm';
+  return 'mild';
+}
+
+export function wearWith(garment: Garment, ctx: EngineContext, limit = 8): Garment[] {
+  const self: Garment = { ...garment, availability: 'available' };
+  const local: EngineContext = {
+    ...ctx,
+    garments: ctx.garments.map((g) => (g.id === garment.id ? self : g)),
+    needs: deriveNeeds({ weather: null, manual: { band: seasonBandFor(garment), rain: false, windy: false }, prefs: ctx.prefs }),
+    recent: [],
+    rng: mulberry32(7),
+  };
+  const slot = slotsFor(self, ctx.prefs)[0];
+  const locked: Partial<OutfitSlots> = slot === 'accessory' ? { accessories: [self.id] } : { [slot]: self.id, accessories: [] };
+  const res = generateOutfit(local, { locked, alternatives: 6 });
+  const byId = new Map(local.garments.map((g) => [g.id, g]));
+  const out: Garment[] = [];
+  const seen = new Set<string>([garment.id]);
+  for (const p of [res.proposal, ...res.alternatives]) {
+    if (!p) continue;
+    const s = p.slots;
+    for (const id of [s.top, s.mid, s.bottom, s.onepiece, s.outer, s.shoes, ...s.accessories]) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const g = byId.get(id);
+      if (g) out.push(g);
+    }
+  }
+  return out.slice(0, limit);
 }

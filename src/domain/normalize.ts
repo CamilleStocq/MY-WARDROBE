@@ -52,6 +52,7 @@ export function normalizeGarment(raw: Partial<Garment> & { id: string }): Garmen
     id: raw.id,
     schemaVersion: 1,
     name: (raw.name ?? '').trim() || def?.label || 'Vêtement',
+    brand: (raw.brand ?? '').trim(),
     category,
     subcategory: sub,
     imageId: raw.imageId ?? null,

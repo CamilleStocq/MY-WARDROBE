@@ -28,6 +28,7 @@ type Draft = Omit<Garment, 'id' | 'schemaVersion' | 'createdAt' | 'updatedAt'>;
 
 const EMPTY: Draft = {
   name: '',
+  brand: '',
   category: 'top',
   subcategory: '',
   imageId: null,
@@ -334,6 +335,9 @@ export function GarmentEditor({
             onBlur={() => setErrors((er) => ({ ...er, name: validateGarment(draft).name }))}
           />
         </Field>
+        <Field label="Marque (facultatif)" htmlFor="g-brand">
+          <input id="g-brand" className="input" value={draft.brand} maxLength={40} autoComplete="off" onChange={(e) => set('brand', e.target.value)} />
+        </Field>
 
         <Button variant="ghost" className="more-toggle" onClick={() => setShowMore((m) => !m)} aria-expanded={showMore}>
           <span>{showMore ? 'Moins de détails' : 'Plus de détails (facultatif)'}</span>
@@ -391,7 +395,7 @@ export function GarmentEditor({
               <div className="field">
                 <label className="switch-row">
                   <span>Imperméable ou déperlant</span>
-                  <input type="checkbox" checked={draft.waterproof} onChange={(e) => set('waterproof', e.target.checked)} style={{ width: 24, height: 24, accentColor: 'var(--ink)' }} />
+                  <input type="checkbox" checked={draft.waterproof} onChange={(e) => set('waterproof', e.target.checked)} style={{ width: 24, height: 24, accentColor: 'var(--text)' }} />
                 </label>
               </div>
             )}

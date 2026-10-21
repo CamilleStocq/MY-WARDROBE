@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Garment, ManualWeather, WeatherSnapshot } from '../domain/types';
 import { defaultPreferences, normalizeGarment } from '../domain/normalize';
 import { deriveNeeds } from './weatherNeeds';
-import { adaptOutfit, evaluateOutfit, generateOutfit, mulberry32, rankAlternatives } from './generator';
+import { adaptOutfit, evaluateOutfit, generateOutfit, mulberry32, rankAlternatives, wearWith } from './generator';
 import type { EngineContext } from './rules';
 import { colorHarmony } from './colorHarmony';
 import { nearestColor } from '../domain/colors';
@@ -223,6 +223,23 @@ describe('verrouillage, remplacement, diversité', () => {
     const res = generateOutfit(ctxFor(big, { band: 'cool', rain: true, windy: false }));
     expect(res.status).toBe('ok');
     expect(performance.now() - t0).toBeLessThan(3000);
+  });
+});
+
+describe('à porter avec', () => {
+  it('propose des pièces de la garde-robe adaptées à la saison de la pièce', () => {
+    const w = wardrobe();
+    const suggestions = wearWith(w.coat, ctxFor(Object.values(w), null));
+    const ids = suggestions.map((g) => g.id);
+    expect(ids.length).toBeGreaterThan(2);
+    expect(ids).not.toContain(w.coat.id);
+    expect(ids).not.toContain(w.sandals.id);
+    expect(ids).not.toContain(w.short.id);
+  });
+  it('fonctionne aussi pour une pièce au lavage', () => {
+    const w = wardrobe();
+    w.jean.availability = 'laundry';
+    expect(wearWith(w.jean, ctxFor(Object.values(w), null)).length).toBeGreaterThan(0);
   });
 });
 
