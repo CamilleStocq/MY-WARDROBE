@@ -36,6 +36,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   const [busy, setBusy] = useState(false);
   const [picker, setPicker] = useState<{ slot: SlotKey; currentId?: string } | null>(null);
   const autogen = useRef(false);
+  const pendingLocks = useRef<OutfitSlots | null>(null);
 
   const byId = useMemo(() => new Map(garments.map((g) => [g.id, g])), [garments]);
   const ctx = useMemo(() => engineContext(occasion), [engineContext, occasion]);
@@ -45,7 +46,8 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     loadToday()
       .then((t) => {
         if (t) {
-          setSlots(t.autogen ? null : t.slots);
+          const hasBase = !!(t.slots.onepiece || (t.slots.top && t.slots.bottom));
+          setSlots(t.autogen || !hasBase ? null : t.slots);
           setLocked(t.locked as LockKey[]);
           setShown(t.shown);
           setOccasion(t.occasion);
@@ -60,8 +62,6 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
       .finally(() => setLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const pendingLocks = useRef<OutfitSlots | null>(null);
-
   useEffect(() => {
     if (!loaded) return;
     saveToday({ slots: slots ?? { accessories: [] }, locked, shown: shown.slice(-40), occasion }).catch(() => undefined);

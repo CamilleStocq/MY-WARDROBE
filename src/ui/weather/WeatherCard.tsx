@@ -21,17 +21,17 @@ export function adviceFor(n: WeatherNeeds): string | null {
     warm: 'Temps agréable : des pièces légères suffisent',
     hot: 'Chaleur : des matières légères et respirantes, sans superposition',
   };
-  const parts = [base[n.band]];
-  if (n.variable && n.band !== 'hot') parts.push('en plusieurs couches pour suivre la journée');
-  if (n.rain === 'likely') parts.push('avec de quoi vous protéger de la pluie');
-  else if (n.rain === 'possible') parts.push('et un œil sur les averses possibles');
-  if (n.windy) parts.push('le vent accentue la sensation de froid');
-  return parts.join(', ') + '.';
+  const sentences = [base[n.band] + (n.variable && n.band !== 'hot' ? ', en plusieurs couches pour suivre la journée.' : '.')];
+  if (n.rain === 'likely') sentences.push('Pluie probable : une veste imperméable et des chaussures fermées sont à privilégier.');
+  else if (n.rain === 'possible') sentences.push('Quelques averses possibles.');
+  if (n.windy) sentences.push('Le vent accentue la sensation de froid.');
+  return sentences.join(' ');
 }
 
 export function WeatherCard() {
   const { prefs, weather, needs, refreshWeather } = useStore();
   const [locOpen, setLocOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const r = weather.result;
   const snap = r?.snapshot && !r.outdated ? r.snapshot : null;
   const manual = weather.manual;
@@ -52,8 +52,15 @@ export function WeatherCard() {
           <Button variant="secondary" icon="pin" onClick={() => setLocOpen(true)}>
             Choisir mon lieu
           </Button>
-          {!manual && <ManualWeatherPicker />}
-          {manual && <ManualSummary />}
+          {manual ? (
+            <ManualSummary />
+          ) : manualOpen ? (
+            <ManualWeatherPicker />
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setManualOpen(true)}>
+              Indiquer le temps moi-même
+            </Button>
+          )}
         </div>
         {locOpen && <LocationSheet onClose={() => setLocOpen(false)} />}
       </>

@@ -719,7 +719,15 @@ p {
   background: var(--cream);
 }
 .sheet-foot .btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.2;
+  text-align: center;
+  padding: 0 var(--s3);
+}
+.sheet-foot .btn svg {
+  flex-shrink: 0;
 }
 .sheet-grip {
   width: 40px;
