@@ -8,14 +8,16 @@
   --white: #ffffff;
   --surface: #f5f5f5; /* fond des photographies */
   --surface-2: #efefef; /* survol / pression */
-  --line: #eaeaea; /* bordures discrètes */
+  --line: #e8e8e8; /* bordures discrètes */
   --text: #111111;
   --text-2: #858585; /* texte secondaire */
   --black: #000000;
   --danger: #c4231b; /* réservé aux actions destructrices */
 
   /* typographie */
-  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif;
+  /* titres éditoriaux : serif fine, utilisée avec parcimonie */
+  --font-display: 'Instrument Serif', 'Times New Roman', Georgia, serif;
   --fs-2xs: 0.6875rem; /* 11 */
   --fs-xs: 0.75rem; /* 12 */
   --fs-sm: 0.8125rem; /* 13 */
@@ -170,8 +172,13 @@ p {
   min-height: 44px;
   margin-bottom: var(--s5);
 }
-.screen-head h1 {
-  font-size: var(--fs-2xl);
+.screen-head h1,
+.display {
+  font-family: var(--font-display);
+  font-size: 2.125rem; /* 34 */
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
 }
 .screen-head .sub {
   color: var(--text-2);
@@ -193,7 +200,7 @@ p {
   grid-template-columns: repeat(4, 1fr);
   height: calc(var(--nav-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
-  background: rgba(255, 255, 255, 0.97);
+  background: var(--white);
   border-top: 1px solid var(--line);
 }
 .tab {
@@ -539,6 +546,32 @@ p {
   bottom: -1px;
   height: 1.5px;
   background: var(--text);
+}
+.tabs-text a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tabs-text a[aria-current='page'] {
+  color: var(--text);
+}
+.tabs-text a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1.5px;
+  background: var(--text);
+}
+.collection-tabs {
+  margin-bottom: var(--s5);
 }
 .tabs-text .count {
   margin-left: 4px;
@@ -1205,6 +1238,10 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 2px;
 }
+.item-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
 .item-title h2 {
   font-size: var(--fs-lg);
   font-weight: 500;
@@ -1485,15 +1522,24 @@ input[type='checkbox'] {
   gap: var(--s3);
 }
 .look-head h1 {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-size: 2.125rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.05;
 }
 .look-head .date {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-2);
+  margin-bottom: var(--s1);
+}
+.look-sub {
   font-size: var(--fs-sm);
   color: var(--text-2);
-  margin-top: 2px;
+  margin-top: var(--s1);
 }
 
 /* météo : une ligne sobre, détails à la demande */
@@ -1809,7 +1855,9 @@ input[type='checkbox'] {
 .look-links {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s1) var(--s4);
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  margin-top: var(--s2);
 }
 .look-cta {
   display: flex;
@@ -2108,8 +2156,9 @@ input.inline-edit {
 }
 .cal-head h2 {
   text-align: center;
-  font-size: var(--fs-xl);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 400;
 }
 .cal-year {
   color: var(--text-2);
@@ -2317,4 +2366,55 @@ details > summary::-webkit-details-marker {
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* retour visuel : cœur qui « pulse » à l'ajout en favori */
+.fav-toggle.is-on svg,
+.fav-heart svg {
+  animation: heart-pop 320ms var(--ease);
+}
+@keyframes heart-pop {
+  40% {
+    transform: scale(1.25);
+  }
+}
+/* transition discrète au changement de tenue */
+.row {
+  animation: fade-in var(--dur-slow) var(--ease);
+}
+
+/* météo compacte : température en évidence */
+.weather-line .wl-temp {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 1;
+  min-width: 2.2em;
+}
+.weather-line .wl-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.weather-line .wl-text b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weather-line .wl-text span {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.weather-line.rich {
+  min-height: 64px;
+  gap: var(--s3);
+}
+.inline-notice .link-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
 }

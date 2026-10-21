@@ -13,20 +13,23 @@ import { GarmentEditor } from './ui/garment/GarmentEditor';
 type Route = 'today' | 'wardrobe' | 'calendar' | 'favorites' | 'settings';
 const ROUTES: Route[] = ['today', 'wardrobe', 'calendar', 'favorites', 'settings'];
 
+/** Navigation principale : quatre onglets. Le calendrier vit dans « Favoris » (Looks · Calendrier). */
 const TABS: { route: Route; label: string; icon: IconName }[] = [
-  { route: 'wardrobe', label: 'Garde-robe', icon: 'hanger' },
-  { route: 'today', label: 'Outfit', icon: 'sparkle' },
-  { route: 'calendar', label: 'Calendrier', icon: 'calendar' },
+  { route: 'today', label: 'Aujourd’hui', icon: 'sparkle' },
+  { route: 'wardrobe', label: 'Dressing', icon: 'hanger' },
   { route: 'favorites', label: 'Favoris', icon: 'heart' },
+  { route: 'settings', label: 'Profil', icon: 'user' },
 ];
 
 const TITLES: Record<Route, string> = {
-  today: 'Outfit du jour',
-  wardrobe: 'Ma garde-robe',
+  today: 'Aujourd’hui',
+  wardrobe: 'Dressing',
   calendar: 'Calendrier',
-  favorites: 'Mes favoris',
+  favorites: 'Favoris',
   settings: 'Profil',
 };
+
+const isActive = (tab: Route, route: Route) => tab === route || (tab === 'favorites' && route === 'calendar');
 
 function readRoute(): Route {
   const r = window.location.hash.replace(/^#\/?/, '') as Route;
@@ -50,10 +53,8 @@ function useRoute(): [Route, (r: Route) => void] {
 function Shell() {
   const { ready, fatal, toasts, dismissToast, detailId, openGarment, adding, setAdding } = useStore();
   const [route, go] = useRoute();
-  const [prev, setPrev] = useState<Route>('today');
 
   useEffect(() => {
-    if (route !== 'settings') setPrev(route);
     document.title = `${TITLES[route]} · My Wardrobe`;
   }, [route]);
 
@@ -73,21 +74,17 @@ function Shell() {
         <div className="brand">My Wardrobe</div>
         <nav aria-label="Navigation principale">
           {TABS.map((t) => (
-            <a key={t.route} href={`#/${t.route}`} className="side-link" aria-current={route === t.route ? 'page' : undefined}>
+            <a key={t.route} href={`#/${t.route}`} className="side-link" aria-current={isActive(t.route, route) ? 'page' : undefined}>
               <Icon name={t.icon} />
-              {TITLES[t.route]}
+              {t.label}
             </a>
           ))}
-          <button type="button" className="side-link side-add" onClick={() => setAdding(true)}>
-            <Icon name="plus" />
-            Ajouter un vêtement
-          </button>
         </nav>
         <div className="side-foot">
-          <a href="#/settings" className="side-link" aria-current={route === 'settings' ? 'page' : undefined}>
-            <Icon name="user" />
-            Profil et préférences
-          </a>
+          <button type="button" className="btn btn-primary btn-block" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={20} />
+            Ajouter un vêtement
+          </button>
         </div>
       </aside>
 
@@ -98,13 +95,13 @@ function Shell() {
             <p>Ouverture de votre dressing…</p>
           </div>
         ) : route === 'wardrobe' ? (
-          <WardrobeScreen onProfile={() => go('settings')} />
+          <WardrobeScreen />
         ) : route === 'calendar' ? (
-          <CalendarScreen onProfile={() => go('settings')} goToday={() => go('today')} />
+          <CalendarScreen goToday={() => go('today')} />
         ) : route === 'favorites' ? (
-          <FavoritesScreen goTo={go} onProfile={() => go('settings')} />
+          <FavoritesScreen goTo={go} />
         ) : route === 'settings' ? (
-          <SettingsScreen onBack={() => go(prev)} />
+          <SettingsScreen />
         ) : (
           <TodayScreen goTo={go} />
         )}
@@ -112,8 +109,8 @@ function Shell() {
 
       <nav className="tabbar" aria-label="Navigation principale">
         {TABS.map((t) => (
-          <a key={t.route} href={`#/${t.route}`} className="tab" aria-current={route === t.route ? 'page' : undefined}>
-            <Icon name={t.icon} filled={route === t.route && t.icon === 'heart'} />
+          <a key={t.route} href={`#/${t.route}`} className="tab" aria-current={isActive(t.route, route) ? 'page' : undefined}>
+            <Icon name={t.icon} />
             <span>{t.label}</span>
           </a>
         ))}

@@ -45,6 +45,7 @@ const EMPTY: Draft = {
   waterproof: false,
   notes: '',
   isDemo: false,
+  favorite: false,
 };
 
 export function GarmentEditor({

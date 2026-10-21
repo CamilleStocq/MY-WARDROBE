@@ -61,6 +61,8 @@ export interface Garment {
   notes: string;
   /** vêtement de démonstration (illustration, pas une vraie photo) */
   isDemo: boolean;
+  /** pièce préférée : légèrement favorisée dans les propositions */
+  favorite: boolean;
   createdAt: string;
   updatedAt: string;
 }

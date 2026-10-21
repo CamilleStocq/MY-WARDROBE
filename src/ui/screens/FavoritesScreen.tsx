@@ -5,16 +5,17 @@ import { getColor } from '../../domain/colors';
 import { adaptOutfit, evaluateOutfit, type Evaluation } from '../../engine/generator';
 import { saveToday } from '../../services/outfitService';
 import { useStore } from '../../state/store';
-import { Button, Chip, ConfirmDialog, EmptyState, Field, IconButton, Notice, Sheet } from '../primitives';
+import { Button, Chip, ConfirmDialog, EmptyState, Field, Notice, Sheet } from '../primitives';
 import { GarmentPhoto } from '../garment/GarmentImage';
 import { Icon } from '../Icon';
+import { CollectionTabs } from '../CollectionTabs';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
 
 const ORDER: SlotName[] = ['top', 'mid', 'bottom', 'onepiece', 'outer', 'shoes'];
 
 type Filter = { kind: 'season'; v: Season } | { kind: 'style'; v: Style } | { kind: 'occasion'; v: Occasion } | null;
 
-export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'wardrobe') => void; onProfile: () => void }) {
+export function FavoritesScreen({ goTo }: { goTo: (t: 'today' | 'wardrobe') => void }) {
   const { favorites, garments, removeFavorite } = useStore();
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>(null);
@@ -45,11 +46,11 @@ export function FavoritesScreen({ goTo, onProfile }: { goTo: (t: 'today' | 'ward
     <>
       <div className="screen-head">
         <div>
-          <h1>Mes favoris</h1>
-          {favorites.length > 0 && <p className="sub">{favorites.length} tenue{favorites.length > 1 ? 's' : ''} enregistrée{favorites.length > 1 ? 's' : ''}</p>}
+          <h1>Favoris</h1>
+          <p className="sub">{favorites.length ? `${favorites.length} look${favorites.length > 1 ? 's' : ''} enregistré${favorites.length > 1 ? 's' : ''}` : 'Vos looks enregistrés'}</p>
         </div>
-        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={onProfile} />
       </div>
+      <CollectionTabs current="favorites" />
 
       {!favorites.length ? (
         <EmptyState

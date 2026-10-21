@@ -36,6 +36,20 @@ export async function restoreFavorite(o: SavedOutfit): Promise<void> {
 const RECENT_KEY = 'history:recent';
 const MAX_RECENT = 30;
 
+const REJECTED_KEY = 'history:rejected';
+
+/** Tenues écartées (« Une autre tenue » sans enregistrer ni porter) : moins reproposées. */
+export async function getRejected(): Promise<string[]> {
+  return (await kv.get<string[]>(REJECTED_KEY)) ?? [];
+}
+
+export async function pushRejected(signature: string): Promise<string[]> {
+  if (!signature) return getRejected();
+  const list = [signature, ...(await getRejected()).filter((s) => s !== signature)].slice(0, 40);
+  await kv.set(REJECTED_KEY, list);
+  return list;
+}
+
 export async function getRecent(): Promise<string[][]> {
   return (await kv.get<string[][]>(RECENT_KEY)) ?? [];
 }

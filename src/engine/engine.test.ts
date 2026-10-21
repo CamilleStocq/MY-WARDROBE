@@ -226,6 +226,44 @@ describe('verrouillage, remplacement, diversité', () => {
   });
 });
 
+describe('variété et préférences', () => {
+  type W = ReturnType<typeof wardrobe>;
+  const count = (w: W, extra: Partial<EngineContext> = {}) => {
+    let sneakers = 0, boots = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const s = generateOutfit(ctxFor(Object.values(w), { band: 'mild', rain: false, windy: false }, seed, extra)).proposal!.slots.shoes;
+      if (s === w.sneakers.id) sneakers++;
+      if (s === w.boots.id) boots++;
+    }
+    return { sneakers, boots };
+  };
+
+  it('évite de reprendre toujours les mêmes chaussures', () => {
+    const w = wardrobe();
+    const base = count(w);
+    // les baskets reviennent dans les 6 dernières tenues (avec d'autres pièces)
+    const recent = Array.from({ length: 6 }, (_, i) => [w.sneakers.id, `autre-${i}`]);
+    const withHistory = count(w, { recent });
+    expect(base.sneakers).toBeGreaterThan(0);
+    expect(withHistory.sneakers).toBeLessThan(base.sneakers);
+  });
+
+  it('favorise légèrement une pièce préférée', () => {
+    const w = wardrobe();
+    const plain = count(w);
+    w.boots.favorite = true;
+    const fav = count(w);
+    expect(fav.boots).toBeGreaterThan(plain.boots);
+  });
+
+  it('repropose moins une tenue écartée', () => {
+    const w = wardrobe();
+    const first = generateOutfit(ctxFor(Object.values(w), { band: 'mild', rain: false, windy: false }, 4)).proposal!;
+    const again = generateOutfit(ctxFor(Object.values(w), { band: 'mild', rain: false, windy: false }, 4, { rejected: [first.signature] })).proposal!;
+    expect(again.signature).not.toBe(first.signature);
+  });
+});
+
 describe('à porter avec', () => {
   it('propose des pièces de la garde-robe adaptées à la saison de la pièce', () => {
     const w = wardrobe();

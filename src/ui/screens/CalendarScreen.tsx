@@ -9,11 +9,12 @@ import { Button, EmptyState, IconButton, Sheet } from '../primitives';
 import { Icon } from '../Icon';
 import { GarmentPhoto } from '../garment/GarmentImage';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
+import { CollectionTabs } from '../CollectionTabs';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes'];
 
-export function CalendarScreen({ onProfile, goToday }: { onProfile: () => void; goToday: () => void }) {
+export function CalendarScreen({ goToday }: { goToday: () => void }) {
   const { calendar, garments } = useStore();
   const now = new Date();
   const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
@@ -41,11 +42,11 @@ export function CalendarScreen({ onProfile, goToday }: { onProfile: () => void; 
     <>
       <div className="screen-head">
         <div>
-          <h1>Calendrier</h1>
+          <h1>Favoris</h1>
           <p className="sub">Ce que vous avez porté, jour après jour.</p>
         </div>
-        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={onProfile} />
       </div>
+      <CollectionTabs current="calendar" />
 
       <div className="cal">
         <div className="cal-head">

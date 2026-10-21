@@ -69,6 +69,7 @@ export function normalizeGarment(raw: Partial<Garment> & { id: string }): Garmen
     waterproof: raw.waterproof ?? false,
     notes: raw.notes ?? '',
     isDemo: raw.isDemo ?? false,
+    favorite: raw.favorite ?? false,
     createdAt: raw.createdAt ?? now,
     updatedAt: raw.updatedAt ?? raw.createdAt ?? now,
   };

@@ -1,22 +1,39 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Formality, GarmentCategory, Occasion, Style, UserPreferences, Warmth } from '../../domain/types';
 import { ALL_STYLES, CATEGORY_ORDER, CATEGORY_SINGULAR, FORMALITY_LABELS, OCCASION_LABELS, STYLE_LABELS, WARMTH_LABELS } from '../../domain/taxonomy';
 import { DEFAULT_THRESHOLDS } from '../../domain/normalize';
 import { TREND_BASE, TREND_RULES } from '../../engine/trends';
 import { WEIGHTS } from '../../engine/weights';
-import { deleteEverything, exportBackup, importBackup } from '../../services/backupService';
+import { deleteEverything, exportBackup, importBackup, readBackup, type BackupFile, type BackupSummary } from '../../services/backupService';
 import { weatherProvider } from '../../services/weather/weatherService';
-import { newId } from '../../services/db';
+import { kv, newId } from '../../services/db';
 import { useStore } from '../../state/store';
-import { Button, ChipGroup, ColorPicker, ConfirmDialog, Field, IconButton, Segmented } from '../primitives';
+import { Button, ChipGroup, ColorPicker, ConfirmDialog, Field, IconButton, Notice, Segmented } from '../primitives';
 import { LocationPicker } from '../weather/LocationSheet';
 
-export function SettingsScreen({ onBack }: { onBack?: () => void }) {
+export function SettingsScreen() {
   const { prefs, setPrefs, toast, garments, reloadAll, loadDemo } = useStore();
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [newSub, setNewSub] = useState<{ label: string; category: GarmentCategory; warmth: Warmth }>({ label: '', category: 'top', warmth: 2 });
   const importRef = useRef<HTMLInputElement>(null);
+  const [pending, setPending] = useState<{ backup: BackupFile; summary: BackupSummary; name: string } | null>(null);
+  const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [storage, setStorage] = useState<{ persisted: boolean | null; usedMb: number | null }>({ persisted: null, usedMb: null });
+
+  useEffect(() => {
+    kv.get<string>('backup:last').then((d) => setLastBackup(d ?? null)).catch(() => undefined);
+    (async () => {
+      try {
+        const persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
+        const est = navigator.storage?.estimate ? await navigator.storage.estimate() : null;
+        setStorage({ persisted, usedMb: est?.usage != null ? Math.round((est.usage / 1024 / 1024) * 10) / 10 : null });
+      } catch {
+        /* informations indisponibles */
+      }
+    })();
+  }, []);
+  const backupAgeDays = lastBackup ? Math.floor((Date.now() - new Date(lastBackup).getTime()) / 86400000) : null;
 
   const update = (patch: Partial<UserPreferences>) => setPrefs({ ...prefs, ...patch });
   const hours = Array.from({ length: 24 }, (_, h) => h);
@@ -25,13 +42,30 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
     setBusy('export');
     try {
       const blob = await exportBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `my-wardrobe-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      toast('Sauvegarde téléchargée');
+      const name = `my-wardrobe-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+      const file = new File([blob], name, { type: 'application/json' });
+      let shared = false;
+      // sur iPhone, le partage permet d'enregistrer directement dans Fichiers ou iCloud Drive
+      if (navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Sauvegarde My Wardrobe' });
+          shared = true;
+        } catch (e) {
+          if ((e as Error).name === 'AbortError') return; // partage annulé
+        }
+      }
+      if (!shared) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      }
+      const now = new Date().toISOString();
+      await kv.set('backup:last', now).catch(() => undefined);
+      setLastBackup(now);
+      toast('Sauvegarde créée');
     } catch {
       toast('La sauvegarde n’a pas pu être créée.', { tone: 'error' });
     } finally {
@@ -43,26 +77,37 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
     if (!file) return;
     setBusy('import');
     try {
-      const r = await importBackup(file);
-      await reloadAll();
-      toast(`${r.garments} vêtements et ${r.outfits} favoris importés`);
-    } catch (e) {
-      toast((e as Error).message, { tone: 'error' });
+      const v = await readBackup(file);
+      if (!v.ok) toast(v.error, { tone: 'error' });
+      else setPending({ backup: v.backup, summary: v.summary, name: file.name });
     } finally {
       setBusy(null);
       if (importRef.current) importRef.current.value = '';
     }
   }
 
+  async function confirmImport() {
+    if (!pending) return;
+    const { backup, summary } = pending;
+    setPending(null);
+    setBusy('import');
+    try {
+      await importBackup(backup);
+      await reloadAll();
+      toast(`Sauvegarde restaurée : ${summary.garments} vêtements, ${summary.outfits} favoris`);
+    } catch (e) {
+      toast((e as Error).message, { tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
       <div className="screen-head">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)' }}>
-          {onBack && <IconButton icon="back" label="Retour" onClick={onBack} className="mobile-only" />}
-          <div>
-            <h1>Profil</h1>
-            <p className="sub">Tout est facultatif et modifiable à tout moment.</p>
-          </div>
+        <div>
+          <h1>Profil</h1>
+          <p className="sub">Tout est facultatif et modifiable à tout moment.</p>
         </div>
       </div>
 
@@ -242,8 +287,27 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
         <section className="panel">
           <h2>Mes données</h2>
           <p className="panel-sub">
-            Vos vêtements, photos et favoris sont stockés uniquement dans ce navigateur, sur cet appareil. Pensez à faire une sauvegarde de temps en temps.
+            Vos vêtements, photos, favoris et votre calendrier sont stockés uniquement sur cet appareil, dans l’app. Ils ne sont pas synchronisés : une sauvegarde régulière les protège en cas de perte du téléphone ou de suppression de l’app.
           </p>
+          <dl className="props" style={{ marginBottom: 'var(--s4)' }}>
+            <dt>Dernière sauvegarde</dt>
+            <dd>{lastBackup ? new Date(lastBackup).toLocaleDateString('fr-BE', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Jamais'}</dd>
+            <dt>Stockage protégé</dt>
+            <dd>{storage.persisted === null ? 'Information indisponible' : storage.persisted ? 'Oui' : 'Non (le navigateur peut l’effacer)'}</dd>
+            {storage.usedMb !== null && (
+              <>
+                <dt>Espace utilisé</dt>
+                <dd>{storage.usedMb.toLocaleString('fr-BE')} Mo</dd>
+              </>
+            )}
+          </dl>
+          {garments.length > 0 && (backupAgeDays === null || backupAgeDays > 14) && (
+            <div style={{ marginBottom: 'var(--s4)' }}>
+              <Notice tone="warn">
+                {backupAgeDays === null ? 'Aucune sauvegarde pour l’instant.' : `Dernière sauvegarde il y a ${backupAgeDays} jours.`} Pensez à en télécharger une.
+              </Notice>
+            </div>
+          )}
           <div className="row-gap">
             <Button variant="outline" icon="download" loading={busy === 'export'} onClick={doExport}>
               Télécharger une sauvegarde
@@ -278,6 +342,26 @@ export function SettingsScreen({ onBack }: { onBack?: () => void }) {
         </section>
       </div>
 
+      {pending && (
+        <ConfirmDialog
+          title="Restaurer cette sauvegarde ?"
+          message={
+            <>
+              {pending.name} : {pending.summary.garments} vêtement{pending.summary.garments > 1 ? 's' : ''}, {pending.summary.images} photo
+              {pending.summary.images > 1 ? 's' : ''}, {pending.summary.outfits} favori{pending.summary.outfits > 1 ? 's' : ''}, {pending.summary.days} jour
+              {pending.summary.days > 1 ? 's' : ''} de calendrier. Les éléments déjà présents sur l’appareil sont conservés ; ceux de la sauvegarde sont ajoutés ou mis à jour.
+              {pending.summary.warnings.map((w) => (
+                <span key={w} style={{ display: 'block', marginTop: 8 }}>
+                  {w}
+                </span>
+              ))}
+            </>
+          }
+          confirmLabel="Restaurer"
+          onCancel={() => setPending(null)}
+          onConfirm={confirmImport}
+        />
+      )}
       {confirmWipe && (
         <ConfirmDialog
           danger

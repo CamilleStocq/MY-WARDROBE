@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildOpenMeteoUrl, parseOpenMeteo } from './weather/openMeteo';
 import { analyzePixels, hasTransparency } from './colorAnalysis';
 import { maskBounds } from './backgroundRemoval';
+import { validateBackup } from './backupService';
 import { normalizeGarment, normalizePreferences, validateGarment } from '../domain/normalize';
 import { roundCoord } from './locationService';
 
@@ -126,5 +127,48 @@ describe('modèle de données', () => {
   });
   it('arrondit la position à ~1 km', () => {
     expect(roundCoord(50.850345)).toBe(50.85);
+  });
+});
+
+describe('validation des sauvegardes', () => {
+  const img = 'data:image/png;base64,iVBORw0KGgo=';
+  const valid = () => ({
+    app: 'my-wardrobe',
+    version: 1,
+    exportedAt: '2026-10-21T10:00:00Z',
+    garments: [{ id: 'g1', category: 'top', subcategory: 'pull', imageId: 'i1', name: 'Pull' }],
+    images: [{ id: 'i1', full: img, thumb: img, width: 10, height: 10, createdAt: '2026-10-21' }],
+    outfits: [{ id: 'o1', slots: { top: 'g1', bottom: 'g-supprime', accessories: [] } }],
+    calendar: { '2026-10-21': { date: '2026-10-21', slots: { top: 'g1', accessories: [] } } },
+  });
+
+  it('accepte une sauvegarde valide et résume son contenu', () => {
+    const r = validateBackup(valid());
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.summary).toMatchObject({ garments: 1, images: 1, outfits: 1, days: 1 });
+      expect(r.summary.warnings.join(' ')).toMatch(/pièces absentes/);
+    }
+  });
+  it('refuse un fichier qui n’est pas une sauvegarde', () => {
+    expect(validateBackup({ foo: 1 }).ok).toBe(false);
+    expect(validateBackup(null).ok).toBe(false);
+  });
+  it('refuse une version plus récente', () => {
+    const r = validateBackup({ ...valid(), version: 99 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/plus récente/);
+  });
+  it('refuse un vêtement abîmé sans rien importer', () => {
+    const d = valid();
+    d.garments.push({ id: '', category: 'top', subcategory: 'x', imageId: '', name: '' });
+    const r = validateBackup(d);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/n°2/);
+  });
+  it('refuse une photo corrompue', () => {
+    const d = valid();
+    d.images[0].full = 'pas-une-image';
+    expect(validateBackup(d).ok).toBe(false);
   });
 });

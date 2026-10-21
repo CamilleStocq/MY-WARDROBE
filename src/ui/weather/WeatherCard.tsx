@@ -229,36 +229,55 @@ export function WeatherLine() {
   const r = weather.result;
   const snap = r?.snapshot && !r.outdated ? r.snapshot : null;
 
-  let text: string;
+  // ligne principale + ligne secondaire ; la température n'apparaît que si elle est réelle
+  let temp: string | null = null;
+  let main: string;
+  let sub = '';
   let icon: 'pin' | 'cloud' | ReturnType<typeof describeWeatherCode>['icon'] = 'cloud';
   if (weather.manual) {
-    text = `Temps ${BAND_LABELS[weather.manual.band]}${weather.manual.rain ? ', pluie' : ''} · saisi manuellement`;
+    main = `Temps ${BAND_LABELS[weather.manual.band]}${weather.manual.rain ? ', pluie' : ''}`;
+    sub = 'Saisi manuellement : pas de données météo';
   } else if (!prefs.location) {
-    text = 'Choisir un lieu pour adapter la tenue à la météo';
+    main = 'Choisir un lieu';
+    sub = 'Pour adapter la tenue à la météo';
     icon = 'pin';
   } else if (snap) {
     const c = describeWeatherCode(snap.current.weatherCode);
     icon = c.icon;
-    const parts = [prefs.location.name, `${Math.round(snap.current.temperature)}°`, c.label, `ressenti ${Math.round(snap.current.feelsLike)}°`];
-    if (needs.rain !== 'none' && needs.rainProbability !== null) parts.push(`pluie ${needs.rainProbability} %`);
+    temp = `${Math.round(snap.current.temperature)}°`;
+    main = `${c.label} · ressenti ${Math.round(snap.current.feelsLike)}°`;
+    const parts = [prefs.location.name];
+    if (needs.rainProbability !== null && needs.rain !== 'none') parts.push(`pluie ${needs.rainProbability} %`);
+    if (needs.windy && needs.gusts) parts.push(`vent ${Math.round(needs.gusts)} km/h`);
     if (r?.freshness === 'cache') parts.push(`données de ${time(snap.timestamp)}`);
-    text = parts.join(' · ');
+    sub = parts.join(' · ');
   } else if (weather.loading) {
-    text = `Météo de ${prefs.location.name}…`;
+    main = `Météo de ${prefs.location.name}…`;
   } else {
-    text = `${prefs.location.name} · météo indisponible`;
+    main = 'Météo indisponible';
+    sub = `${prefs.location.name} · touchez pour réessayer ou indiquer le temps`;
   }
+  const label = [temp, main, sub].filter(Boolean).join(', ');
 
   return (
     <>
       <button
         type="button"
-        className="weather-line"
+        className="weather-line rich"
         onClick={() => (prefs.location || weather.manual ? setOpen(true) : setLocOpen(true))}
-        aria-label={`Météo : ${text}. Voir le détail`}
+        aria-label={`Météo : ${label}. Voir le détail`}
       >
-        {weather.loading && !snap ? <span className="spinner" aria-hidden /> : <Icon name={icon} size={18} />}
-        <span className="wl-main">{text}</span>
+        {temp ? (
+          <span className="wl-temp">{temp}</span>
+        ) : weather.loading ? (
+          <span className="spinner" aria-hidden />
+        ) : (
+          <Icon name={icon} size={20} />
+        )}
+        <span className="wl-text">
+          <b>{main}</b>
+          {sub && <span>{sub}</span>}
+        </span>
         <span className="wl-chev">
           <Icon name="chevron" size={16} />
         </span>

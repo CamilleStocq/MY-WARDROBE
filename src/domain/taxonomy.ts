@@ -33,8 +33,8 @@ export interface SubcategoryDef {
 export const CATEGORY_LABELS: Record<GarmentCategory, string> = {
   top: 'Hauts',
   bottom: 'Bas',
-  onepiece: 'Pièces complètes',
-  outerwear: 'Couches extérieures',
+  onepiece: 'Robes et combinaisons',
+  outerwear: 'Vestes et manteaux',
   shoes: 'Chaussures',
   accessory: 'Accessoires',
 };

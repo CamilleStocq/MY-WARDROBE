@@ -54,6 +54,7 @@ interface Store {
   refreshWeather: (force?: boolean) => Promise<void>;
   setManualWeather: (m: ManualWeather | null) => void;
   rememberProposal: (slots: OutfitSlots) => Promise<void>;
+  rememberRejected: (signature: string) => Promise<void>;
   engineContext: (occasion: Occasion) => EngineContext;
 
   loadDemo: () => Promise<void>;
@@ -84,6 +85,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefsState] = useState<UserPreferences>(defaultPreferences);
   const [recent, setRecent] = useState<string[][]>([]);
   const [calendar, setCalendar] = useState<Calendar>({});
+  const [rejected, setRejected] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
   const [weather, setWeather] = useState<WeatherState>({ result: null, loading: false, manual: null });
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
@@ -116,6 +118,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         loadCalendar(),
       ]);
       setCalendar(c);
+      setRejected(await outfitsApi.getRejected().catch(() => []));
       setGarments(g);
       setFavorites(f);
       setPrefsState(p);
@@ -303,6 +306,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [fail],
   );
 
+  const rememberRejected = useCallback(async (signature: string) => {
+    try {
+      setRejected(await outfitsApi.pushRejected(signature));
+    } catch {
+      /* confort uniquement */
+    }
+  }, []);
+
   const rememberProposal = useCallback(async (slots: OutfitSlots) => {
     try {
       setRecent(await outfitsApi.pushRecent(slots));
@@ -320,9 +331,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       season: currentSeason(),
       // tenues réellement portées ces 14 derniers jours d'abord, puis les propositions récentes
       recent: [...recentlyWorn(calendar), ...recent],
+      rejected,
       favorites: favorites.map((f) => [f.slots.top, f.slots.mid, f.slots.bottom, f.slots.onepiece, f.slots.outer, f.slots.shoes].filter((x): x is string => !!x).sort()),
     }),
-    [garments, needs, prefs, recent, favorites, calendar],
+    [garments, needs, prefs, recent, favorites, calendar, rejected],
   );
 
   const loadDemo = useCallback(async () => {
@@ -370,6 +382,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshWeather,
     setManualWeather,
     rememberProposal,
+    rememberRejected,
     engineContext,
     loadDemo,
     removeDemo,

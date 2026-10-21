@@ -14,12 +14,14 @@ interface Filters {
   seasons: Season[];
   colors: string[];
   styles: Style[];
+  /** sous-catégories (jean, pull, bottines…) */
+  types: string[];
   availability: Availability | 'all';
 }
 
-const NO_FILTERS: Filters = { seasons: [], colors: [], styles: [], availability: 'all' };
+const NO_FILTERS: Filters = { seasons: [], colors: [], styles: [], types: [], availability: 'all' };
 
-export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
+export function WardrobeScreen() {
   const { garments, openGarment, loadDemo, removeDemo, prefs } = useStore();
   const [category, setCategory] = useState<GarmentCategory | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -31,7 +33,15 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
   const [loadingDemo, setLoadingDemo] = useState(false);
 
   const activeFilterCount =
-    filters.seasons.length + filters.colors.length + filters.styles.length + (filters.availability !== 'all' ? 1 : 0);
+    filters.seasons.length + filters.colors.length + filters.styles.length + filters.types.length + (filters.availability !== 'all' ? 1 : 0);
+
+  // types réellement présents dans la garde-robe (et dans la catégorie choisie)
+  const typeOptions = useMemo(() => {
+    const keys = new Set(garments.filter((g) => category === 'all' || g.category === category).map((g) => g.subcategory));
+    return [...keys]
+      .map((k) => ({ value: k, label: subcategoryLabel(k, prefs.customSubcategories) }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }, [garments, category, prefs.customSubcategories]);
 
   const counts = useMemo(() => {
     const m = new Map<string, number>();
@@ -48,6 +58,7 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
       if (filters.seasons.length && g.seasons.length && g.seasons.length < 4 && !filters.seasons.some((s) => g.seasons.includes(s))) return false;
       if (filters.colors.length && ![g.primaryColor, ...g.secondaryColors].some((c) => filters.colors.includes(c))) return false;
       if (filters.styles.length && !filters.styles.some((s) => g.styles.includes(s))) return false;
+      if (filters.types.length && !filters.types.includes(g.subcategory)) return false;
       if (nq) {
         const hay = norm(`${g.name} ${subcategoryLabel(g.subcategory, prefs.customSubcategories)} ${getColor(g.primaryColor).label} ${g.material}`);
         if (!hay.includes(nq)) return false;
@@ -69,7 +80,7 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
   if (!garments.length) {
     return (
       <>
-        <Header count={0} onAdd={() => setAdding(true)} onProfile={onProfile} />
+        <Header count={0} onAdd={() => setAdding(true)} />
         <EmptyState
           art="wardrobe"
           title="Votre dressing vous attend"
@@ -101,7 +112,7 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
 
   return (
     <>
-      <Header count={garments.length} onAdd={() => setAdding(true)} onProfile={onProfile} laundry={laundry} />
+      <Header count={garments.length} onAdd={() => setAdding(true)} laundry={laundry} />
 
       {hasDemo && (
         <div className="inline-notice">
@@ -212,6 +223,11 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
           <Field label="Couleur">
             <ColorPicker label="Couleur" multiple value={filters.colors} onChange={(v) => setFilters((f) => ({ ...f, colors: v }))} />
           </Field>
+          {typeOptions.length > 1 && (
+            <Field label="Type de vêtement">
+              <ChipGroup<string> label="Type de vêtement" multiple options={typeOptions} value={filters.types} onChange={(v) => setFilters((f) => ({ ...f, types: v }))} />
+            </Field>
+          )}
           <Field label="Style">
             <ChipGroup<Style> label="Style" multiple options={ALL_STYLES.map((s) => ({ value: s, label: STYLE_LABELS[s] }))} value={filters.styles} onChange={(v) => setFilters((f) => ({ ...f, styles: v }))} />
           </Field>
@@ -223,11 +239,11 @@ export function WardrobeScreen({ onProfile }: { onProfile: () => void }) {
   );
 }
 
-function Header({ count, onAdd, onProfile, laundry = 0 }: { count: number; onAdd: () => void; onProfile: () => void; laundry?: number }) {
+function Header({ count, onAdd, laundry = 0 }: { count: number; onAdd: () => void; laundry?: number }) {
   return (
     <div className="screen-head">
       <div>
-        <h1>Ma garde-robe</h1>
+        <h1>Dressing</h1>
         {count > 0 && (
           <p className="sub">
             {count} pièce{count > 1 ? 's' : ''}
@@ -244,7 +260,6 @@ function Header({ count, onAdd, onProfile, laundry = 0 }: { count: number; onAdd
             <IconButton icon="plus" label="Ajouter un vêtement" className="mobile-only" onClick={onAdd} />
           </>
         )}
-        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={onProfile} />
       </div>
     </div>
   );

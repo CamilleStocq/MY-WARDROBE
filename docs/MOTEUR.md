@@ -37,16 +37,16 @@ Une pièce **verrouillée** est conservée, sauf si elle viole une contrainte ob
 
 | Composant | Poids | Ce qui est évalué |
 | --- | --- | --- |
-| météo | 24 % | écart à la chaleur visée, pluie (veste imperméable, chaussures fermées, daim/toile), vent, superposition si écart de température |
+| météo | 22 % | écart à la chaleur visée, pluie (veste imperméable, chaussures fermées, daim/toile), vent, superposition si écart de température |
 | couleurs | 20 % | neutres, une couleur forte, camaïeu, complémentaires, pastels, couleurs vives concurrentes ; bonus « rappel de couleur » |
 | styles | 13 % | compatibilité deux à deux (table `STYLE_COMPAT`), cohérence avec l'occasion |
 | motifs | 8 % | une pièce à motif = idéal, deux = pénalité, trois = forte pénalité |
 | formalité | 8 % | écart au niveau visé par l'occasion, écart entre les pièces |
-| préférences | 8 % | couleurs et styles aimés / évités / rares |
-| diversité | 6 % | similarité (Jaccard) avec les 15 dernières propositions ; bonus pour un favori non porté récemment |
+| préférences | 8 % | couleurs et styles aimés / évités / rares, pièces marquées comme préférées |
+| diversité | 10 % | similarité (Jaccard) avec les 15 dernières tenues proposées ou portées ; pénalité par pièce déjà beaucoup utilisée (mêmes chaussures, même bas) ; pénalité pour une tenue écartée récemment ; bonus pour un favori non porté récemment |
 | saison | 5 % | pièce prévue pour la saison en cours |
 | proportions | 4 % | ample + ajusté favorisé, ample + ample pénalisé |
-| tendances | 4 % | règles de la base éditoriale (`trends.ts`) |
+| tendances | 2 % | règles de la base éditoriale (`trends.ts`) |
 
 ## 4. Génération (`generator.ts`)
 

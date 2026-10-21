@@ -27,7 +27,7 @@ import { GarmentEditor } from './GarmentEditor';
  * discrètes, « À porter avec », bouton noir fixé en bas.
  */
 export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void }) {
-  const { garments, setAvailability, removeGarment, favorites, prefs, engineContext, openGarment, toast } = useStore();
+  const { garments, setAvailability, saveGarment, removeGarment, favorites, prefs, engineContext, openGarment, toast } = useStore();
   const g = garments.find((x) => x.id === id);
   const [mode, setMode] = useState<'view' | 'edit' | 'photo' | 'confirm'>('view');
   const [menu, setMenu] = useState(false);
@@ -52,7 +52,6 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
   }
 
   const usedIn = favorites.filter((f) => f.garmentIds.includes(g.id)).length;
-  const inLaundry = g.availability === 'laundry';
   const subLabel = subcategoryLabel(g.subcategory, prefs.customSubcategories);
 
   async function createOutfit() {
@@ -105,18 +104,7 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
                   setMode('photo');
                 }}
               >
-                Remplacer la photo
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="danger"
-                onClick={() => {
-                  setMenu(false);
-                  setMode('confirm');
-                }}
-              >
-                Supprimer
+                Remplacer ou retoucher la photo
               </button>
             </div>
           )}
@@ -130,22 +118,33 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
           <div className="item-title">
             <span className="eyebrow">{g.brand || CATEGORY_SINGULAR[g.category]}</span>
             <h2>{g.name}</h2>
-            {g.availability !== 'available' && <span className="small muted">{AVAILABILITY_LABELS[g.availability]}</span>}
-            {g.isDemo && <span className="small muted">Pièce de démonstration (illustration)</span>}
+            <span className="item-meta">
+              {subLabel} · {getColor(g.primaryColor).label} · {seasonsLabel(g.seasons)}
+            </span>
+            {g.availability !== 'available' && <span className="item-meta">{AVAILABILITY_LABELS[g.availability]}</span>}
+            {g.isDemo && <span className="item-meta">Pièce de démonstration (illustration)</span>}
           </div>
 
           <div className="action-row">
-            <button type="button" className="action-tile" aria-pressed={inLaundry} onClick={() => setAvailability(g, inLaundry ? 'available' : 'laundry')}>
-              <Icon name="wash" size={20} />
-              {inLaundry ? 'Au lavage' : 'Lavage'}
+            <button
+              type="button"
+              className="action-tile"
+              aria-pressed={g.favorite}
+              onClick={async () => {
+                await saveGarment({ ...g, favorite: !g.favorite });
+                toast(g.favorite ? 'Retiré de vos pièces préférées' : 'Ajouté à vos pièces préférées');
+              }}
+            >
+              <Icon name="heart" size={20} filled={g.favorite} />
+              Favori
             </button>
             <button type="button" className="action-tile" onClick={() => setMode('edit')}>
               <Icon name="edit" size={20} />
               Modifier
             </button>
-            <button type="button" className="action-tile" onClick={() => setMode('photo')}>
-              <Icon name="wand" size={20} />
-              Retoucher
+            <button type="button" className="action-tile" onClick={() => setMode('confirm')}>
+              <Icon name="trash" size={20} />
+              Supprimer
             </button>
           </div>
 

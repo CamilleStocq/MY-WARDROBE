@@ -80,6 +80,30 @@ export const db = {
       throw e;
     }
   },
+  /**
+   * Écrit plusieurs enregistrements, dans plusieurs magasins, en UNE transaction :
+   * si une écriture échoue (quota…), rien n'est conservé.
+   */
+  async putAtomic(writes: { store: StoreName; values: unknown[] }[]): Promise<void> {
+    const database = await openDb();
+    const names = [...new Set(writes.map((w) => w.store))];
+    await new Promise<void>((resolve, reject) => {
+      const tx = database.transaction(names, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => {
+        const e = tx.error;
+        reject(
+          e?.name === 'QuotaExceededError'
+            ? new StorageError("L'espace de stockage de l'appareil est plein : la restauration a été annulée, rien n'a été modifié.")
+            : new StorageError("L'écriture a échoué : la restauration a été annulée, rien n'a été modifié."),
+        );
+      };
+      for (const w of writes) {
+        const s = tx.objectStore(w.store);
+        for (const v of w.values) s.put(v);
+      }
+    });
+  },
   async delete(name: StoreName, key: string): Promise<void> {
     await wrap((await store(name, 'readwrite')).delete(key));
   },

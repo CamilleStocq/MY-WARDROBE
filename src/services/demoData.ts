@@ -108,6 +108,7 @@ export async function loadDemoWardrobe(): Promise<number> {
     await createGarment({
       secondaryColors: [],
       brand: '',
+      favorite: false,
       seasons: [],
       material: '',
       silhouette: null,

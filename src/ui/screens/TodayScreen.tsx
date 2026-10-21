@@ -20,7 +20,7 @@ const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes']
 
 export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | 'settings' | 'calendar') => void }) {
   const store = useStore();
-  const { garments, prefs, needs, favorites, engineContext, rememberProposal, addFavorite, saveFavorite, removeFavorite, toast, openGarment, logWorn, calendar } = store;
+  const { garments, prefs, needs, favorites, engineContext, rememberProposal, rememberRejected, addFavorite, saveFavorite, removeFavorite, toast, openGarment, logWorn, calendar } = store;
   const [loaded, setLoaded] = useState(false);
   const [slots, setSlots] = useState<OutfitSlots | null>(null);
   const [locked, setLocked] = useState<LockKey[]>([]);
@@ -82,6 +82,14 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
           else if (src[k]) lockedSlots[k] = src[k];
         }
       }
+      // la tenue affichée est écartée si elle n'a été ni enregistrée ni portée
+      if (!base && slots) {
+        const sig = signatureOf(slots).join('+');
+        const kept =
+          favorites.some((f) => signatureOf(f.slots).join('+') === sig) ||
+          (!!calendar[localDate()] && signatureOf(calendar[localDate()].slots).join('+') === sig);
+        if (!kept) rememberRejected(sig);
+      }
       setBusy(true);
       await new Promise((r) => setTimeout(r, 160)); // laisse le temps d'afficher l'état de chargement
       const res = generateOutfit(ctx, { locked: lockedSlots, exclude: shown });
@@ -97,7 +105,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
       }
       setBusy(false);
     },
-    [ctx, shown, slots, locked, rememberProposal],
+    [ctx, shown, slots, locked, rememberProposal, rememberRejected, favorites, calendar],
   );
 
   // génération automatique (« créer une tenue » depuis une fiche, « s'inspirer » d'un favori)
@@ -191,19 +199,19 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
 
   const dateText = new Date().toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = dateText.charAt(0).toUpperCase() + dateText.slice(1);
+  const hour = new Date().getHours();
+  const hello = hour >= 18 || hour < 5 ? 'Bonsoir' : 'Bonjour';
+  const greeting = prefs.displayName ? `${hello} ${prefs.displayName}` : hello;
 
   // ---------- en-tête ----------
   const head = (
     <>
       <div className="look-head">
         <div>
-          <h1>Ton look du jour</h1>
-          <p className="date">
-            {today}
-            {prefs.displayName ? ` · ${prefs.displayName}` : ''}
-          </p>
+          <p className="date">{today}</p>
+          <h1>{greeting}</h1>
+          <p className="look-sub">Votre tenue du jour, pensée pour la météo.</p>
         </div>
-        <IconButton icon="user" label="Profil et préférences" className="mobile-only" onClick={() => goTo('settings')} />
       </div>
       <WeatherLine />
       {garments.length > 0 && (
@@ -244,24 +252,24 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   const description = slots && evaluation && (
     <div className="look-desc">
       <ul>
-        {evaluation.explanation.slice(0, 3).map((e) => (
+        {evaluation.explanation.slice(0, 2).map((e) => (
           <li key={e}>{e}</li>
         ))}
-        {evaluation.warnings.slice(0, 2).map((w) => (
+        {evaluation.warnings.slice(0, 1).map((w) => (
           <li key={w} className="warn">
             {w}
           </li>
         ))}
       </ul>
-      {(evaluation.explanation.length > 3 || evaluation.warnings.length > 2) && (
+      {(evaluation.explanation.length > 2 || evaluation.warnings.length > 1) && (
         <details className="disclosure">
           <summary>Pourquoi ce look</summary>
           <div className="look-desc">
             <ul>
-              {evaluation.explanation.slice(3).map((e) => (
+              {evaluation.explanation.slice(2).map((e) => (
                 <li key={e}>{e}</li>
               ))}
-              {evaluation.warnings.slice(2).map((w) => (
+              {evaluation.warnings.slice(1).map((w) => (
                 <li key={w} className="warn">
                   {w}
                 </li>
@@ -276,9 +284,9 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         </details>
       )}
       <div className="look-links">
-        <button type="button" className="link-btn" onClick={() => setEditOpen((v) => !v)} aria-expanded={editOpen}>
-          {editOpen ? 'Fermer la modification' : 'Modifier la tenue'}
-        </button>
+        <Button variant="outline" size="sm" icon="edit" onClick={() => setEditOpen((v) => !v)} aria-expanded={editOpen}>
+          {editOpen ? 'Terminer' : 'Modifier ce look'}
+        </Button>
         {wornToday ? (
           <span className="small muted">
             <Icon name="check" size={14} /> Notée dans le calendrier
@@ -445,7 +453,7 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
 
         <div className="look-cta sticky-cta" style={{ bottom: 'calc(var(--nav-h) + var(--safe-b))' }}>
           <Button variant="primary" size="lg" loading={busy} onClick={() => generate()} style={{ flex: 1 }}>
-            Générer une autre tenue
+            Une autre tenue
           </Button>
           <button
             type="button"

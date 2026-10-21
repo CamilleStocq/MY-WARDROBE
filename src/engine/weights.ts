@@ -5,7 +5,7 @@
  * Documentation détaillée : docs/MOTEUR.md
  */
 export const WEIGHTS = {
-  weather: 0.24, // adéquation fine à la météo (chaleur cumulée, pluie, vent, superposition)
+  weather: 0.22, // adéquation fine à la météo (chaleur cumulée, pluie, vent, superposition)
   color: 0.2, // harmonie des couleurs
   pattern: 0.08, // gestion des motifs
   style: 0.13, // cohérence des styles
@@ -13,8 +13,8 @@ export const WEIGHTS = {
   proportion: 0.04, // équilibre des volumes
   season: 0.05, // saison des pièces
   preference: 0.08, // goûts déclarés
-  trend: 0.04, // base éditoriale de tendances
-  diversity: 0.06, // éviter les répétitions
+  trend: 0.02, // base éditoriale de tendances
+  diversity: 0.1, // éviter les répétitions (tenue entière et pièce par pièce)
 } as const;
 
 export type ScoreComponent = keyof typeof WEIGHTS;

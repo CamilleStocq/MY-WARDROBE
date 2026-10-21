@@ -16,6 +16,8 @@ export interface EngineContext {
   recent: string[][];
   /** ensembles de vêtements des tenues favorites */
   favorites: string[][];
+  /** signatures (ids triés joints par « + ») des tenues écartées sans être gardées */
+  rejected?: string[];
   rng?: () => number;
 }
 
@@ -291,6 +293,8 @@ function preferenceScore(v: OutfitView, ctx: EngineContext): number {
   s += Math.min(0.2, 0.1 * colors.filter((c) => p.favoriteColors.includes(c)).length);
   s -= 0.1 * colors.filter((c) => p.rareColors.includes(c)).length;
   s += Math.min(0.2, 0.1 * pieces.filter((g) => g.styles.some((st) => p.favoriteStyles.includes(st))).length);
+  // pièces marquées comme préférées depuis leur fiche
+  s += Math.min(0.16, 0.08 * pieces.filter((g) => g.favorite).length);
   s -= 0.35 * pieces.filter((g) => g.styles.some((st) => p.avoidedStyles.includes(st))).length;
   if (p.comfort === 'confort') s -= 0.06 * pieces.filter((g) => g.formality === 3).length;
   return clamp(s);
@@ -309,6 +313,13 @@ function jaccard(a: string[], b: string[]): number {
   return union ? inter / union : 0;
 }
 
+/** Nombre d'apparitions de chaque pièce dans les tenues récentes (proposées ou portées). */
+export function recentUse(recent: string[][], window = 10): Map<string, number> {
+  const m = new Map<string, number>();
+  recent.slice(0, window).forEach((set) => set.forEach((id) => m.set(id, (m.get(id) ?? 0) + 1)));
+  return m;
+}
+
 function diversityScore(sig: string[], ctx: EngineContext): number {
   let maxJ = 0;
   ctx.recent.slice(0, 15).forEach((r, i) => {
@@ -316,6 +327,12 @@ function diversityScore(sig: string[], ctx: EngineContext): number {
     maxJ = Math.max(maxJ, jaccard(sig, r) * decay);
   });
   let s = 1 - 0.9 * maxJ;
+  // variété pièce par pièce : éviter de reprendre toujours les mêmes chaussures, le même bas…
+  const use = recentUse(ctx.recent);
+  const reuse = sig.reduce((a, id) => a + Math.max(0, (use.get(id) ?? 0) - 1), 0);
+  s -= Math.min(0.4, 0.06 * reuse);
+  const key = sig.join('+');
+  if (ctx.rejected?.includes(key)) s -= 0.3; // déjà écartée récemment
   const isFav = ctx.favorites.some((f) => jaccard(f, sig) === 1);
   if (isFav && maxJ < 0.9) s += 0.15; // association appréciée, pas portée récemment
   return clamp(s);
