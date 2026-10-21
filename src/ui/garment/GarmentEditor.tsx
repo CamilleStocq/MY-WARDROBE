@@ -17,7 +17,8 @@ import {
 } from '../../domain/taxonomy';
 import { getColor } from '../../domain/colors';
 import { validateGarment } from '../../domain/normalize';
-import { deleteImage, processImage, saveImage, type ProcessedImage } from '../../services/imageService';
+import { deleteImage, getImageRecord, processImage, saveImage, type ProcessedImage } from '../../services/imageService';
+import { PhotoEditor } from './PhotoEditor';
 import { useStore } from '../../state/store';
 import { Button, ChipGroup, ColorPicker, Field, IconButton, Notice, Segmented, Sheet } from '../primitives';
 import { Icon } from '../Icon';
@@ -60,7 +61,9 @@ export function GarmentEditor({
   const { createGarment, saveGarment, prefs, toast } = useStore();
   const editing = !!garment;
   const [draft, setDraft] = useState<Draft>(garment ? { ...garment } : EMPTY);
-  const [step, setStep] = useState<'photo' | 'form'>(editing && !startWithPhoto ? 'form' : 'photo');
+  const [step, setStep] = useState<'photo' | 'retouch' | 'form'>(editing && !startWithPhoto ? 'form' : 'photo');
+  /** image en cours de retouche, et écran auquel revenir si on annule */
+  const [retouch, setRetouch] = useState<{ source: Blob; back: 'photo' | 'form'; skippable: boolean } | null>(null);
   const [photo, setPhoto] = useState<{ processed: ProcessedImage; preview: string } | null>(null);
   const [processing, setProcessing] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -91,12 +94,38 @@ export function GarmentEditor({
     setDraft((d) => (d.name === auto ? d : { ...d, name: auto }));
   }, [draft.subcategory, draft.primaryColor, nameTouched, custom]);
 
-  async function handleFile(file: File | undefined) {
+  /** Photo choisie : on passe par l'étape de retouche. */
+  function handleFile(file: File | undefined) {
+    if (cameraRef.current) cameraRef.current.value = '';
+    if (galleryRef.current) galleryRef.current.value = '';
     if (!file) return;
+    setPhotoError(null);
+    if (file.type && !file.type.startsWith('image/')) {
+      setPhotoError("Ce fichier n'est pas une image.");
+      return;
+    }
+    setRetouch({ source: file, back: 'photo', skippable: true });
+    setStep('retouch');
+  }
+
+  /** Retoucher la photo déjà choisie (ou celle du vêtement existant). */
+  async function retouchCurrent() {
+    let source: Blob | undefined = photo?.processed.full;
+    if (!source && draft.imageId) source = (await getImageRecord(draft.imageId))?.full;
+    if (!source) {
+      setStep('photo');
+      return;
+    }
+    setRetouch({ source, back: 'form', skippable: false });
+    setStep('retouch');
+  }
+
+  /** Image finale (retouchée ou non) : compression, miniature, analyse des couleurs. */
+  async function applyImage(blob: Blob) {
     setPhotoError(null);
     setProcessing(true);
     try {
-      const processed = await processImage(file);
+      const processed = await processImage(blob);
       setPhoto((old) => {
         if (old) URL.revokeObjectURL(old.preview);
         return { processed, preview: URL.createObjectURL(processed.thumb) };
@@ -109,13 +138,14 @@ export function GarmentEditor({
           secondaryColors: d.secondaryColors.length ? d.secondaryColors : a.secondary,
         }));
       }
+      setRetouch(null);
       setStep('form');
     } catch (e) {
       setPhotoError(e instanceof Error ? e.message : "Cette image n'a pas pu être importée.");
+      setRetouch(null);
+      setStep('photo');
     } finally {
       setProcessing(false);
-      if (cameraRef.current) cameraRef.current.value = '';
-      if (galleryRef.current) galleryRef.current.value = '';
     }
   }
 
@@ -138,10 +168,7 @@ export function GarmentEditor({
   async function submit() {
     const errs = validateGarment(draft);
     setErrors(errs);
-    if (Object.keys(errs).length) {
-      setShowMore((m) => m);
-      return;
-    }
+    if (Object.keys(errs).length) return;
     setSaving(true);
     try {
       let imageId = draft.imageId;
@@ -167,6 +194,20 @@ export function GarmentEditor({
   }
 
   const title = editing ? (step === 'photo' ? 'Remplacer la photo' : 'Modifier le vêtement') : 'Ajouter un vêtement';
+
+  if (step === 'retouch' && retouch) {
+    return (
+      <PhotoEditor
+        source={retouch.source}
+        onDone={applyImage}
+        onSkip={retouch.skippable ? () => applyImage(retouch.source) : undefined}
+        onCancel={() => {
+          setStep(retouch.back);
+          setRetouch(null);
+        }}
+      />
+    );
+  }
 
   if (step === 'photo') {
     return (
@@ -194,7 +235,7 @@ export function GarmentEditor({
               <>
                 <Icon name="camera" size={36} />
                 <p style={{ maxWidth: '30ch' }}>
-                  Posez le vêtement à plat sur un fond clair et uni : il ressortira mieux dans vos tenues.
+                  Posez le vêtement à plat sur un fond clair et uni. Vous pourrez retirer le fond à l’étape suivante.
                 </p>
               </>
             )}
@@ -247,6 +288,7 @@ export function GarmentEditor({
           <GarmentPhoto imageId={draft.imageId} alt="Photo actuelle" size="full" />
         )}
         <IconButton icon="camera" label={draft.imageId || photo ? 'Changer la photo' : 'Ajouter une photo'} filled onClick={() => setStep('photo')} />
+        {(draft.imageId || photo) && <IconButton icon="wand" label="Retoucher la photo (retirer le fond)" filled className="retouch-btn" onClick={retouchCurrent} />}
       </div>
       {photo && !editing && (
         <p className="analysis-note">

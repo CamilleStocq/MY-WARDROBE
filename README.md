@@ -34,14 +34,14 @@ src/
   ui/         système de design, composants et écrans
 ```
 
-- **Stockage** : IndexedDB dans le navigateur (vêtements, photos en Blob, favoris, préférences, cache météo). Les photos sont redimensionnées (1400 px + miniature 480 px, JPEG) et analysées localement : rien n'est envoyé à un service externe.
+- **Stockage** : IndexedDB dans le navigateur (vêtements, photos en Blob, favoris, préférences, cache météo). Les photos sont redimensionnées (1400 px + miniature 480 px, JPEG ; PNG transparent si détourées) et analysées localement : rien n'est envoyé à un service externe.
 - **Météo** : [Open-Meteo](https://open-meteo.com/) (sans clé, CC BY 4.0, modèles KNMI HARMONIE / ICON-D2 pour la Belgique). L'IRM ne propose pas d'API de prévisions utilisable directement depuis un navigateur (service WFS sans CORS, grilles de modèle). Le fournisseur est isolé derrière l'interface `WeatherProvider` (`src/services/weather/provider.ts`).
 - **Tendances** : base éditoriale rédigée manuellement (`src/engine/trends.ts`), clairement signalée comme telle dans l'interface.
 
 ## Limites connues de la V1
 
 - Les données vivent sur un seul appareil/navigateur. Utiliser **Profil → Télécharger une sauvegarde** régulièrement. Sur iPhone, Safari peut effacer les données d'un site non utilisé pendant 7 jours : installer l'app sur l'écran d'accueil l'évite.
-- Pas de détourage automatique des photos : un fond clair et uni donne le meilleur rendu (les fonds blancs sont fondus dans la composition).
+- **Retouche photo** : après la prise de vue, l'étape « Retoucher » propose le détourage automatique, une gomme, un pinceau de restauration, le recadrage et la rotation. Le détourage utilise [@imgly/background-removal](https://github.com/imgly/background-removal-js) (AGPL-3.0) et s'exécute sur l'appareil : la photo n'est envoyée nulle part, mais le modèle d'IA (≈ 40 Mo) et le moteur WebAssembly sont téléchargés une fois depuis le CDN d'IMG.LY, puis mis en cache. Mesuré à environ 17 s sur ordinateur pour la première photo, téléchargement du modèle compris ; la durée sur iPhone n'a pas encore été mesurée. Les images détourées sont stockées en PNG transparent. Une image déjà détourée (iOS : appui long sur le sujet dans Photos) garde aussi sa transparence.
 - L'analyse de photo ne suggère que les couleurs ; la catégorie est choisie par l'utilisateur.
 
 Évolution prévue : synchronisation multi-appareils via Supabase (Auth + Postgres avec Row Level Security + Storage pour les photos), en conservant les services actuels comme couche d'accès.

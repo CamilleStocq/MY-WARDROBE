@@ -1169,6 +1169,81 @@ p {
   margin-bottom: var(--s4);
 }
 
+/* éditeur photo */
+.editor {
+  display: grid;
+  gap: var(--s4);
+}
+@media (min-width: 720px) {
+  .editor {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}
+.editor-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  padding: var(--s3);
+  border-radius: var(--r-lg);
+  background: var(--sand);
+  overflow: hidden;
+}
+.editor-stage.checker {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #ece6df 25%, transparent 25%),
+    linear-gradient(-45deg, #ece6df 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #ece6df 75%),
+    linear-gradient(-45deg, transparent 75%, #ece6df 75%);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+.editor-canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 52dvh;
+  width: auto;
+  height: auto;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.editor-canvas.tool-erase,
+.editor-canvas.tool-restore,
+.editor-canvas.tool-crop {
+  touch-action: none;
+  cursor: crosshair;
+}
+.editor-busy {
+  position: absolute;
+  inset: auto var(--s3) var(--s3);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--r-md);
+  background: rgba(43, 42, 46, 0.88);
+  color: var(--paper);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+.editor-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.editor-side .field + .field {
+  margin-top: 0;
+}
+.editor-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-wrap: wrap;
+}
+
 .more-toggle {
   margin-top: var(--s5);
   width: 100%;
@@ -1749,4 +1824,8 @@ input.inline-edit {
     animation-delay: 0ms !important;
     transition-duration: 1ms !important;
   }
+}
+
+.photo-preview .retouch-btn {
+  right: 60px;
 }

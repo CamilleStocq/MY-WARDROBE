@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildOpenMeteoUrl, parseOpenMeteo } from './weather/openMeteo';
-import { analyzePixels } from './colorAnalysis';
+import { analyzePixels, hasTransparency } from './colorAnalysis';
+import { maskBounds } from './backgroundRemoval';
 import { normalizeGarment, normalizePreferences, validateGarment } from '../domain/normalize';
 import { roundCoord } from './locationService';
 
@@ -73,6 +74,34 @@ describe('analyse de couleur', () => {
   it('ne prétend rien quand l’image est uniforme', () => {
     const r = analyzePixels(image(80, 100, [250, 250, 248], [250, 250, 248]), 80, 100);
     expect(r.primary).toBeNull();
+  });
+});
+
+describe('photos détourées', () => {
+  function cutout(w: number, h: number, fg: number[]) {
+    const data = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        const inside = x >= 30 && x < 70 && y >= 20 && y < 120;
+        data.set(inside ? [...fg, 255] : [0, 0, 0, 0], (y * w + x) * 4);
+      }
+    return data;
+  }
+  it('analyse uniquement les pixels opaques', () => {
+    const d = cutout(100, 140, [47, 79, 181]);
+    expect(hasTransparency(d)).toBe(true);
+    expect(analyzePixels(d, 100, 140).primary).toBe('bleu-roi');
+  });
+  it('une photo classique n’est pas considérée comme détourée', () => {
+    expect(hasTransparency(new Uint8ClampedArray(400).fill(255))).toBe(false);
+  });
+  it('recadre autour du vêtement avec une marge', () => {
+    const w = 100, h = 140;
+    const mask = new Uint8ClampedArray(w * h);
+    for (let y = 20; y < 120; y++) for (let x = 30; x < 70; x++) mask[y * w + x] = 255;
+    const b = maskBounds(mask, w, h, 0.05)!;
+    expect(b).toEqual({ x: 25, y: 15, w: 50, h: 110 });
+    expect(maskBounds(new Uint8ClampedArray(w * h), w, h)).toBeNull();
   });
 });
 

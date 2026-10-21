@@ -9,49 +9,54 @@ export interface ColorAnalysis {
 
 /**
  * Analyse simple et locale des couleurs d'une photo de vêtement :
- * 1. estime la couleur du fond à partir des bords de l'image ;
- * 2. ignore les pixels proches du fond ;
- * 3. associe les pixels restants au nuancier et compte les occurrences.
+ * 1. image détourée (fond transparent) : seuls les pixels opaques comptent ;
+ *    sinon, la couleur du fond est estimée sur les bords et ignorée ;
+ * 2. les pixels retenus sont associés au nuancier et comptés.
  * Elle ne devine ni la matière, ni la marque, ni la taille.
  */
 export function analyzePixels(data: Uint8ClampedArray | number[], width: number, height: number): ColorAnalysis {
   const px = (x: number, y: number) => {
     const i = (y * width + x) * 4;
-    return [data[i], data[i + 1], data[i + 2]] as const;
+    return [data[i], data[i + 1], data[i + 2], data[i + 3]] as const;
   };
 
-  // 1. fond : moyenne des pixels du pourtour
-  let br = 0, bg = 0, bb = 0, bn = 0;
+  // 1. bords : couleur moyenne et part de pixels transparents
+  let br = 0, bg = 0, bb = 0, bn = 0, transparentBorder = 0;
   const step = Math.max(1, Math.floor(Math.min(width, height) / 60));
-  for (let x = 0; x < width; x += step) {
-    for (const y of [0, 1, height - 2, height - 1]) {
-      if (y < 0 || y >= height) continue;
-      const [r, g, b] = px(x, y);
-      br += r; bg += g; bb += b; bn++;
+  const sample = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= width || y >= height) return;
+    const [r, g, b, a] = px(x, y);
+    bn++;
+    if (a < 128) {
+      transparentBorder++;
+      return;
     }
-  }
-  for (let y = 0; y < height; y += step) {
-    for (const x of [0, 1, width - 2, width - 1]) {
-      if (x < 0 || x >= width) continue;
-      const [r, g, b] = px(x, y);
-      br += r; bg += g; bb += b; bn++;
-    }
-  }
-  const bgc = bn ? [br / bn, bg / bn, bb / bn] : [255, 255, 255];
+    br += r; bg += g; bb += b;
+  };
+  for (let x = 0; x < width; x += step) for (const y of [0, 1, height - 2, height - 1]) sample(x, y);
+  for (let y = 0; y < height; y += step) for (const x of [0, 1, width - 2, width - 1]) sample(x, y);
+  const cutout = bn > 0 && transparentBorder / bn > 0.5;
+  const opaque = bn - transparentBorder;
+  const bgc = opaque ? [br / opaque, bg / opaque, bb / opaque] : [255, 255, 255];
 
-  // 2-3. comptage dans la zone centrale
+  // 2. comptage (zone centrale si photo brute, toute l'image si détourée)
   const counts = new Map<string, number>();
   let kept = 0;
   let total = 0;
-  const x0 = Math.floor(width * 0.15), x1 = Math.ceil(width * 0.85);
-  const y0 = Math.floor(height * 0.1), y1 = Math.ceil(height * 0.9);
+  const x0 = cutout ? 0 : Math.floor(width * 0.15), x1 = cutout ? width : Math.ceil(width * 0.85);
+  const y0 = cutout ? 0 : Math.floor(height * 0.1), y1 = cutout ? height : Math.ceil(height * 0.9);
   const inner = Math.max(1, Math.floor(Math.min(width, height) / 120));
   for (let y = y0; y < y1; y += inner) {
     for (let x = x0; x < x1; x += inner) {
-      total++;
-      const [r, g, b] = px(x, y);
-      const d = Math.abs(r - bgc[0]) + Math.abs(g - bgc[1]) + Math.abs(b - bgc[2]);
-      if (d < 60) continue;
+      const [r, g, b, a] = px(x, y);
+      if (cutout) {
+        if (a < 128) continue;
+        total++;
+      } else {
+        total++;
+        const d = Math.abs(r - bgc[0]) + Math.abs(g - bgc[1]) + Math.abs(b - bgc[2]);
+        if (d < 60) continue;
+      }
       kept++;
       const key = nearestColor(r, g, b);
       counts.set(key, (counts.get(key) ?? 0) + 1);
@@ -66,4 +71,17 @@ export function analyzePixels(data: Uint8ClampedArray | number[], width: number,
     .filter(([, c]) => c / kept >= 0.12)
     .map(([k]) => k);
   return { primary, secondary, coverage };
+}
+
+/** Vrai si une part significative de l'image est transparente (photo détourée). */
+export function hasTransparency(data: Uint8ClampedArray, minShare = 0.01): boolean {
+  let n = 0;
+  const pixels = data.length / 4;
+  const stride = Math.max(1, Math.floor(pixels / 40000));
+  let sampled = 0;
+  for (let i = 0; i < pixels; i += stride) {
+    sampled++;
+    if (data[i * 4 + 3] < 250) n++;
+  }
+  return n / sampled >= minShare;
 }
