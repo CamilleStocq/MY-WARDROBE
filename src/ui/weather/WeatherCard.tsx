@@ -28,13 +28,18 @@ export function adviceFor(n: WeatherNeeds): string | null {
   return sentences.join(' ');
 }
 
-export function WeatherCard() {
-  const { prefs, weather, needs, refreshWeather } = useStore();
+export function WeatherCard({ day = 'today' }: { day?: 'today' | 'tomorrow' }) {
+  const store = useStore();
+  const { prefs, weather, refreshWeather } = store;
+  const needs = day === 'tomorrow' ? store.needsTomorrow : store.needs;
   const [locOpen, setLocOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const r = weather.result;
-  const snap = r?.snapshot && !r.outdated ? r.snapshot : null;
-  const manual = weather.manual;
+  const usable = r?.snapshot && !r.outdated ? r.snapshot : null;
+  const forecast = day === 'tomorrow' ? usable?.tomorrow : usable?.today;
+  // demain : pas de « maintenant », seulement les prévisions de la journée
+  const snap = usable && forecast ? usable : null;
+  const manual = day === 'tomorrow' ? null : weather.manual;
 
   if (!prefs.location) {
     return (
@@ -67,10 +72,11 @@ export function WeatherCard() {
     );
   }
 
-  const cond = snap ? describeWeatherCode(snap.current.weatherCode) : null;
+  const tomorrow = day === 'tomorrow';
+  const cond = snap && forecast ? describeWeatherCode(tomorrow ? forecast.weatherCode : snap.current.weatherCode) : null;
   const hours = snap?.hourly.filter((h) => {
     const hr = parseInt(h.time.slice(11, 13), 10);
-    return hr >= 7 && hr <= 22;
+    return h.time.startsWith(forecast!.date) && hr >= 7 && hr <= 22;
   });
 
   return (
@@ -88,30 +94,31 @@ export function WeatherCard() {
             ) : weather.loading ? (
               <span className="muted small">Chargement de la météo…</span>
             ) : (
-              <span className="cond">Météo indisponible</span>
+              <span className="cond">{tomorrow && usable ? 'Prévisions de demain indisponibles' : 'Météo indisponible'}</span>
             )}
           </div>
-          {snap && <span className="weather-temp">{Math.round(snap.current.temperature)}°</span>}
+          {snap && forecast && <span className="weather-temp">{Math.round(tomorrow ? forecast.max : snap.current.temperature)}°</span>}
         </div>
 
-        {snap && (
+        {snap && forecast && (
           <>
             <div className="weather-facts">
               <span className="fact">
-                <Icon name="thermo" size={14} /> Ressenti {Math.round(snap.current.feelsLike)}°
+                <Icon name="thermo" size={14} />{' '}
+                {tomorrow ? `Ressenti ${Math.round(forecast.feelsMin)}° à ${Math.round(forecast.feelsMax)}°` : `Ressenti ${Math.round(snap.current.feelsLike)}°`}
               </span>
               <span className="fact">
-                {Math.round(snap.today.min)}° / {Math.round(snap.today.max)}°
+                {Math.round(forecast.min)}° / {Math.round(forecast.max)}°
               </span>
-              {snap.today.precipitationProbabilityMax !== null && (
+              {forecast.precipitationProbabilityMax !== null && (
                 <span className="fact">
-                  <Icon name="umbrella" size={14} /> {snap.today.precipitationProbabilityMax} %
-                  {snap.today.precipitationSum > 0 ? `, ${snap.today.precipitationSum.toLocaleString('fr-BE')} mm` : ''}
+                  <Icon name="umbrella" size={14} /> {forecast.precipitationProbabilityMax} %
+                  {forecast.precipitationSum > 0 ? `, ${forecast.precipitationSum.toLocaleString('fr-BE')} mm` : ''}
                 </span>
               )}
               <span className="fact">
-                <Icon name="wind" size={14} /> {Math.round(snap.today.windMax)} km/h
-                {snap.today.gustMax >= 40 ? `, rafales ${Math.round(snap.today.gustMax)}` : ''}
+                <Icon name="wind" size={14} /> {Math.round(forecast.windMax)} km/h
+                {forecast.gustMax >= 40 ? `, rafales ${Math.round(forecast.gustMax)}` : ''}
               </span>
             </div>
             {hours && hours.length > 0 && (
@@ -151,7 +158,7 @@ export function WeatherCard() {
             {r.error ?? 'Le service ne répond pas.'} Vous pouvez indiquer le temps vous-même ci-dessous.
           </Notice>
         )}
-        {r && !snap && !weather.loading && (manual ? <ManualSummary /> : <ManualWeatherPicker />)}
+        {r && !snap && !weather.loading && !tomorrow && (manual ? <ManualSummary /> : <ManualWeatherPicker />)}
 
         <div className="weather-foot">
           <span>
@@ -222,19 +229,36 @@ function ManualSummary() {
  * elle guide la tenue sans prendre la place de la composition. Le détail
  * (heures, pluie, vent, saisie manuelle) s'ouvre à la demande.
  */
-export function WeatherLine() {
-  const { prefs, weather, needs } = useStore();
+export function WeatherLine({ day = 'today' }: { day?: 'today' | 'tomorrow' }) {
+  const store = useStore();
+  const { prefs, weather } = store;
+  const needs = day === 'tomorrow' ? store.needsTomorrow : store.needs;
   const [open, setOpen] = useState(false);
   const [locOpen, setLocOpen] = useState(false);
   const r = weather.result;
   const snap = r?.snapshot && !r.outdated ? r.snapshot : null;
+  const tomorrow = day === 'tomorrow' ? snap?.tomorrow : undefined;
 
   // ligne principale + ligne secondaire ; la température n'apparaît que si elle est réelle
   let temp: string | null = null;
   let main: string;
   let sub = '';
   let icon: 'pin' | 'cloud' | ReturnType<typeof describeWeatherCode>['icon'] = 'cloud';
-  if (weather.manual) {
+  if (day === 'tomorrow' && prefs.location && snap) {
+    if (tomorrow) {
+      const c = describeWeatherCode(tomorrow.weatherCode);
+      icon = c.icon;
+      temp = `${Math.round(tomorrow.max)}°`;
+      main = `${c.label} · ${Math.round(tomorrow.min)}° à ${Math.round(tomorrow.max)}°`;
+      const parts = [prefs.location.name, 'prévisions'];
+      if (needs.rainProbability !== null && needs.rain !== 'none') parts.push(`pluie ${needs.rainProbability} %`);
+      if (needs.windy && needs.gusts) parts.push(`vent ${Math.round(needs.gusts)} km/h`);
+      sub = parts.join(' · ');
+    } else {
+      main = 'Prévisions de demain indisponibles';
+      sub = `${prefs.location.name} · touchez pour réessayer`;
+    }
+  } else if (weather.manual) {
     main = `Temps ${BAND_LABELS[weather.manual.band]}${weather.manual.rain ? ', pluie' : ''}`;
     sub = 'Saisi manuellement : pas de données météo';
   } else if (!prefs.location) {
@@ -283,8 +307,8 @@ export function WeatherLine() {
         </span>
       </button>
       {open && (
-        <Sheet title="Météo du jour" onClose={() => setOpen(false)}>
-          <WeatherCard />
+        <Sheet title={day === 'tomorrow' ? 'Météo de demain' : 'Météo du jour'} onClose={() => setOpen(false)}>
+          <WeatherCard day={day} />
           {adviceFor(needs) && (
             <p className="small" style={{ marginTop: 'var(--s4)' }}>
               {adviceFor(needs)}

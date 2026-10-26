@@ -42,21 +42,24 @@ public/sw.js  service worker (ouverture hors ligne)
 ```
 
 - **Stockage** : IndexedDB sur l'appareil (vêtements, photos en Blob, favoris, calendrier, préférences, cache météo). Photos redimensionnées (1400 px + miniature 480 px, JPEG ; PNG transparent si détourées) et analysées localement.
-- **Météo** : [Open-Meteo](https://open-meteo.com/) (sans clé, CC BY 4.0, modèles KNMI HARMONIE / ICON-D2 pour la Belgique). L'IRM ne propose pas d'API de prévisions utilisable depuis un navigateur (service WFS sans CORS, grilles de modèle). Le fournisseur est isolé derrière `WeatherProvider`. En cas de panne : dernières prévisions affichées comme « non actualisées », ou saisie manuelle ; aucune valeur n'est inventée.
+- **Météo** : [Open-Meteo](https://open-meteo.com/) (sans clé, CC BY 4.0, modèles KNMI HARMONIE / ICON-D2 pour la Belgique). L'IRM ne propose pas d'API de prévisions utilisable depuis un navigateur (service WFS sans CORS, grilles de modèle). Deux jours de prévisions sont demandés (aujourd’hui et demain). Le fournisseur est isolé derrière `WeatherProvider`. En cas de panne : dernières prévisions affichées comme « non actualisées », ou saisie manuelle ; aucune valeur n'est inventée.
 - **Moteur** : voir [docs/MOTEUR.md](docs/MOTEUR.md) (contraintes météo obligatoires, score pondéré, variété pièce par pièce, pièces préférées, tenues écartées).
 - **Hors ligne** : le service worker garde l'application en cache (réseau d'abord pour la page, cache pour les fichiers). La météo n'est jamais servie depuis ce cache.
 
 ## Écrans
 
-- **Aujourd'hui** : date, salutation, météo compacte (température, ressenti, pluie, vent), tenue en rangées défilantes (faire glisser une pièce pour en essayer une autre), explication courte, « Une autre tenue », « Modifier ce look » (remplacer ou verrouiller une pièce), favori, « Je la porte aujourd'hui ».
+- **Premier lancement** : trois étapes facultatives (prénom, lieu pour la météo, premier vêtement ou dressing de démonstration). Il ne s’affiche pas si le dressing contient déjà des vêtements.
+- **Aujourd'hui** : date, salutation, météo compacte (température, ressenti, pluie, vent), tenue en rangées défilantes (faire glisser une pièce pour en essayer une autre), explication courte, « Une autre tenue », « Modifier ce look » (remplacer ou verrouiller une pièce), favori, « Je la porte aujourd'hui ». Le sélecteur **Aujourd’hui / Demain** prépare la tenue du lendemain à partir des prévisions de demain sur les heures de sortie ; elle est enregistrée à part et devient la tenue du jour le lendemain (sauf si une autre tenue a déjà été composée ce jour-là).
+- **Lavage** : après « Je la porte aujourd’hui », l’app propose de mettre au lavage les pièces portées (hauts et bas cochés, veste et chaussures non). La machine est considérée faite le dimanche après-midi : chaque **dimanche à 17 h**, tout ce qui est au lavage redevient disponible. Le navigateur ne pouvant rien exécuter en arrière-plan, ce retour est appliqué à l’ouverture de l’app (ou au retour au premier plan), y compris pour les dimanches manqués. Pour « Demain », une pièce qui sera propre avant l’heure de sortie est déjà proposée.
 - **Dressing** : catalogue photographique, recherche, catégories, filtres combinables (type, couleur, saison, style, disponibilité) et tri.
 - **Fiche vêtement** : grande photo, marque et nom, type · couleur · saison, actions Favori / Modifier / Supprimer, « À porter avec » (pièces réelles du dressing), bouton « Créer une tenue ».
-- **Favoris** : looks enregistrés (onglet « Looks ») et calendrier des tenues portées (onglet « Calendrier »).
+- **Favoris** : looks enregistrés.
+- **Calendrier** : tenues portées jour par jour.
 - **Profil** : lieu et horaires, confort thermique, style, catégories personnalisées, données (sauvegarde, restauration, état du stockage).
 
 ## Direction artistique
 
-Variables dans `src/styles/app.css` : blanc `#FFFFFF`, surfaces photo `#F5F5F5`, texte `#111111` / `#858585`, bordures `#E8E8E8`, boutons noirs. Titres en Instrument Serif, texte en Inter. Aucune couleur décorative : seuls les vêtements apportent la couleur.
+Variables dans `src/styles/app.css` : blanc `#FFFFFF`, surfaces photo `#F5F5F5`, texte `#111111` / `#6E6E6E` (contraste AA), bordures `#E8E8E8`, boutons noirs. Titres en Instrument Serif, texte en Inter. Aucune couleur décorative : seuls les vêtements apportent la couleur.
 
 ## Données et sauvegardes
 

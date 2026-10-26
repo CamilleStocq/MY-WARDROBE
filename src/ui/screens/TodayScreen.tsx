@@ -5,9 +5,12 @@ import { evaluateOutfit, generateOutfit, wardrobeGaps, type GenerationResult } f
 import { signatureOf, subOf, type SlotKey } from '../../engine/rules';
 import { needsSummary } from '../../engine/weatherNeeds';
 import { TREND_BASE } from '../../engine/trends';
-import { TODAY_EVENT, loadToday, localDate, saveToday } from '../../services/outfitService';
+import { TODAY_EVENT, loadPlan, localDate, planDate, savePlan, type PlanDay } from '../../services/outfitService';
+import { backupReminderDue, saveBackupFile, snoozeBackupReminder } from '../../services/backupFile';
+import { laundryCandidates, laundryReturnLabel } from '../../services/laundryService';
+import { slotIds } from '../../domain/normalize';
 import { useStore } from '../../state/store';
-import { Button, Chip, EmptyState, IconButton, Notice } from '../primitives';
+import { Button, Chip, EmptyState, IconButton, Notice, Sheet } from '../primitives';
 import { Icon } from '../Icon';
 import { GarmentPhoto } from '../garment/GarmentImage';
 import { OutfitBoard, SLOT_LABELS } from '../outfit/OutfitBoard';
@@ -18,9 +21,28 @@ import { WeatherLine } from '../weather/WeatherCard';
 type LockKey = SlotName | 'accessories';
 const ORDER: SlotName[] = ['outer', 'top', 'mid', 'bottom', 'onepiece', 'shoes'];
 
-export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | 'settings' | 'calendar') => void }) {
+type GoTo = (tab: 'wardrobe' | 'favorites' | 'settings' | 'calendar') => void;
+
+/**
+ * Accueil : tenue d'aujourd'hui ou de demain. Chaque jour a sa propre tenue enregistrée ;
+ * changer de jour recharge l'écran avec celle-ci.
+ */
+export function TodayScreen({ goTo }: { goTo: GoTo }) {
+  const [day, setDay] = useState<PlanDay>('today');
+  useEffect(() => {
+    // une tenue créée depuis une fiche ou un favori concerne aujourd'hui
+    const back = () => setDay('today');
+    window.addEventListener(TODAY_EVENT, back);
+    return () => window.removeEventListener(TODAY_EVENT, back);
+  }, []);
+  return <DayPlan key={day} day={day} setDay={setDay} goTo={goTo} />;
+}
+
+function DayPlan({ day, setDay, goTo }: { day: PlanDay; setDay: (d: PlanDay) => void; goTo: GoTo }) {
   const store = useStore();
-  const { garments, prefs, needs, favorites, engineContext, rememberProposal, rememberRejected, addFavorite, saveFavorite, removeFavorite, toast, openGarment, logWorn, calendar } = store;
+  const isTomorrow = day === 'tomorrow';
+  const needs = isTomorrow ? store.needsTomorrow : store.needs;
+  const { garments, prefs, favorites, engineContext, rememberProposal, rememberRejected, addFavorite, saveFavorite, removeFavorite, toast, openGarment, logWorn, calendar, sendToLaundry } = store;
   const [loaded, setLoaded] = useState(false);
   const [slots, setSlots] = useState<OutfitSlots | null>(null);
   const [locked, setLocked] = useState<LockKey[]>([]);
@@ -34,14 +56,22 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   /** change à chaque nouvelle proposition : les rangées défilantes recalculent alors leurs alternatives */
   const [listsKey, setListsKey] = useState('init');
   const [autogenTick, setAutogenTick] = useState(0);
+  const [backupDue, setBackupDue] = useState<{ due: boolean; last: string | null }>({ due: false, last: null });
+  const [savingBackup, setSavingBackup] = useState(false);
+  /** pièces proposées pour le lavage après « Je la porte aujourd'hui » */
+  const [laundry, setLaundry] = useState<{ id: string; checked: boolean }[] | null>(null);
+
+  useEffect(() => {
+    backupReminderDue().then(setBackupDue).catch(() => undefined);
+  }, []);
   const pendingLocks = useRef<OutfitSlots | null>(null);
 
   const byId = useMemo(() => new Map(garments.map((g) => [g.id, g])), [garments]);
-  const ctx = useMemo(() => engineContext(occasion), [engineContext, occasion]);
+  const ctx = useMemo(() => engineContext(occasion, day), [engineContext, occasion, day]);
 
   // restauration de la tenue du jour (au montage et quand une autre vue la modifie)
   const restore = useCallback(() => {
-    loadToday()
+    loadPlan(day)
       .then((t) => {
         if (!t) return;
         const hasBase = !!(t.slots.onepiece || (t.slots.top && t.slots.bottom));
@@ -59,18 +89,19 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
       })
       .catch(() => undefined)
       .finally(() => setLoaded(true));
-  }, []);
+  }, [day]);
 
   useEffect(() => {
     restore();
+    if (day !== 'today') return;
     window.addEventListener(TODAY_EVENT, restore);
     return () => window.removeEventListener(TODAY_EVENT, restore);
-  }, [restore]);
+  }, [restore, day]);
 
   useEffect(() => {
     if (!loaded || pendingLocks.current) return;
-    saveToday({ slots: slots ?? { accessories: [] }, locked, shown: shown.slice(-40), occasion }).catch(() => undefined);
-  }, [loaded, slots, locked, shown, occasion]);
+    savePlan(day, { slots: slots ?? { accessories: [] }, locked, shown: shown.slice(-40), occasion }).catch(() => undefined);
+  }, [loaded, slots, locked, shown, occasion, day]);
 
   const generate = useCallback(
     async (base?: OutfitSlots | null, lockList: LockKey[] = locked) => {
@@ -117,11 +148,18 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autogenTick, garments.length]);
 
-  const evaluation = useMemo(() => (slots ? evaluateOutfit(slots, ctx) : null), [slots, ctx]);
   const signature = slots ? signatureOf(slots).join('+') : '';
   const savedAs = favorites.find((f) => signatureOf(f.slots).join('+') === signature);
+  const targetDate = new Date(`${planDate(day)}T12:00:00`);
   const wornEntry = calendar[localDate()];
-  const wornToday = !!wornEntry && signatureOf(wornEntry.slots).join('+') === signature;
+  const wornToday = !isTomorrow && !!wornEntry && signatureOf(wornEntry.slots).join('+') === signature;
+  // une tenue déjà portée aujourd'hui puis mise au lavage n'est pas signalée « au lavage »
+  const evalCtx = useMemo(() => {
+    if (!wornToday || !slots) return ctx;
+    const ids = new Set(slotIds(slots));
+    return { ...ctx, garments: ctx.garments.map((g) => (ids.has(g.id) && g.availability === 'laundry' ? { ...g, availability: 'available' as const } : g)) };
+  }, [ctx, wornToday, slots]);
+  const evaluation = useMemo(() => (slots ? evaluateOutfit(slots, evalCtx) : null), [slots, evalCtx]);
   const gaps = useMemo(() => wardrobeGaps(garments), [garments]);
   const canCompose =
     garments.some((g) => g.category === 'onepiece' && g.availability === 'available') ||
@@ -167,8 +205,8 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     const styleCount = new Map<Style, number>();
     pieces.forEach((g) => g!.styles.forEach((s) => styleCount.set(s, (styleCount.get(s) ?? 0) + 1)));
     const styleTags = [...styleCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([s]) => s);
-    const day = new Date().toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' });
-    const name = styleTags[0] ? `Look ${STYLE_LABELS[styleTags[0]].toLowerCase()} du ${day}` : `Look du ${day}`;
+    const dayText = targetDate.toLocaleDateString('fr-BE', { day: 'numeric', month: 'long' });
+    const name = styleTags[0] ? `Look ${STYLE_LABELS[styleTags[0]].toLowerCase()} du ${dayText}` : `Look du ${dayText}`;
     try {
       await addFavorite({
         name,
@@ -194,10 +232,19 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     await logWorn(localDate(), slots, savedAs?.id ?? null);
     await rememberProposal(slots);
     if (savedAs) await saveFavorite({ ...savedAs, lastWornAt: new Date().toISOString() }).catch(() => undefined);
-    toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
+    const candidates = laundryCandidates(slots).filter((c) => byId.get(c.id)?.availability === 'available');
+    if (candidates.length) setLaundry(candidates.map(({ id, checked }) => ({ id, checked })));
+    else toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
   }
 
-  const dateText = new Date().toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
+  async function confirmLaundry() {
+    const list = (laundry ?? []).filter((l) => l.checked).map((l) => byId.get(l.id)!).filter(Boolean);
+    setLaundry(null);
+    if (list.length) await sendToLaundry(list);
+    else toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
+  }
+
+  const dateText = targetDate.toLocaleDateString('fr-BE', { weekday: 'long', day: 'numeric', month: 'long' });
   const today = dateText.charAt(0).toUpperCase() + dateText.slice(1);
   const hour = new Date().getHours();
   const hello = hour >= 18 || hour < 5 ? 'Bonsoir' : 'Bonjour';
@@ -210,10 +257,18 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         <div>
           <p className="date">{today}</p>
           <h1>{greeting}</h1>
-          <p className="look-sub">Votre tenue du jour, pensée pour la météo.</p>
+          <p className="look-sub">{isTomorrow ? 'Votre tenue de demain, d’après les prévisions.' : 'Votre tenue du jour, pensée pour la météo.'}</p>
         </div>
       </div>
-      <WeatherLine />
+      <div className="day-switch" role="radiogroup" aria-label="Jour de la tenue">
+        <button type="button" role="radio" aria-checked={!isTomorrow} onClick={() => setDay('today')}>
+          Aujourd’hui
+        </button>
+        <button type="button" role="radio" aria-checked={isTomorrow} onClick={() => setDay('tomorrow')}>
+          Demain
+        </button>
+      </div>
+      <WeatherLine day={day} />
       {garments.length > 0 && (
         <div className="chip-row occasions" role="radiogroup" aria-label="Occasion">
           {(Object.keys(OCCASION_LABELS) as Occasion[]).map((o) => (
@@ -226,8 +281,46 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
     </>
   );
 
+  const backupDays = backupDue.last ? Math.floor((Date.now() - new Date(backupDue.last).getTime()) / 86400000) : null;
   const notices = (
     <>
+      {backupDue.due && garments.some((g) => !g.isDemo) && (
+        <div className="backup-reminder" role="status">
+          <Icon name="download" size={16} />
+          <span>{backupDays === null ? 'Aucune sauvegarde de votre dressing' : `Dernière sauvegarde il y a ${backupDays} jours`}</span>
+          <button
+            type="button"
+            className="link-btn"
+            disabled={savingBackup}
+            onClick={async () => {
+              setSavingBackup(true);
+              try {
+                const r = await saveBackupFile();
+                if (r !== 'cancelled') {
+                  setBackupDue({ due: false, last: new Date().toISOString() });
+                  toast('Sauvegarde créée');
+                }
+              } catch {
+                toast('La sauvegarde n’a pas pu être créée.', { tone: 'error' });
+              } finally {
+                setSavingBackup(false);
+              }
+            }}
+          >
+            {savingBackup ? 'Préparation…' : 'Sauvegarder'}
+          </button>
+          <button
+            type="button"
+            className="link-btn muted-link"
+            onClick={async () => {
+              await snoozeBackupReminder().catch(() => undefined);
+              setBackupDue((b) => ({ ...b, due: false }));
+            }}
+          >
+            Plus tard
+          </button>
+        </div>
+      )}
       {banner && <Notice tone="info">{banner}</Notice>}
       {gen?.status === 'impossible' && (
         <Notice tone="warn" title="Aucune tenue possible avec ces contraintes">
@@ -287,7 +380,11 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         <Button variant="outline" size="sm" icon="edit" onClick={() => setEditOpen((v) => !v)} aria-expanded={editOpen}>
           {editOpen ? 'Terminer' : 'Modifier ce look'}
         </Button>
-        {wornToday ? (
+        {isTomorrow ? (
+          <span className="small muted">
+            <Icon name="calendar" size={14} /> Prévue pour demain : elle vous attendra ici au réveil.
+          </span>
+        ) : wornToday ? (
           <span className="small muted">
             <Icon name="check" size={14} /> Notée dans le calendrier
           </span>
@@ -333,11 +430,15 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
   } else if (!slots) {
     main = (
       <div className="generate-hero">
-        <h2>Votre tenue du jour</h2>
+        <h2>{isTomorrow ? 'Votre tenue de demain' : 'Votre tenue du jour'}</h2>
         <p>
           {needs.source === 'none'
-            ? 'Choisissez votre lieu pour une tenue adaptée à la météo, ou composez-la dès maintenant.'
-            : 'Composée à partir de vos vêtements disponibles et de la météo prévue sur vos heures de sortie.'}
+            ? isTomorrow && prefs.location
+              ? 'Les prévisions de demain ne sont pas encore disponibles : la tenue sera composée sans tenir compte de la météo.'
+              : 'Choisissez votre lieu pour une tenue adaptée à la météo, ou composez-la dès maintenant.'
+            : isTomorrow
+              ? `Composée à partir de vos vêtements disponibles et des prévisions de demain entre ${prefs.outing.start} h et ${prefs.outing.end} h.`
+              : 'Composée à partir de vos vêtements disponibles et de la météo prévue sur vos heures de sortie.'}
         </p>
         <Button variant="primary" size="lg" loading={busy} onClick={() => generate()}>
           Composer ma tenue
@@ -483,6 +584,60 @@ export function TodayScreen({ goTo }: { goTo: (tab: 'wardrobe' | 'favorites' | '
         </div>
         {main}
       </div>
+
+      {laundry && (
+        <Sheet
+          title="Tenue notée. Au lavage ?"
+          size="narrow"
+          onClose={() => {
+            setLaundry(null);
+            toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
+          }}
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setLaundry(null);
+                  toast('Ajoutée au calendrier', { action: { label: 'Voir', run: () => goTo('calendar') } });
+                }}
+              >
+                Pas maintenant
+              </Button>
+              <Button variant="primary" onClick={confirmLaundry} disabled={!laundry.some((l) => l.checked)}>
+                Mettre au lavage
+              </Button>
+            </>
+          }
+        >
+          <p className="small muted">
+            Les pièces cochées ne seront plus proposées jusqu’à la machine du dimanche : elles redeviennent disponibles {laundryReturnLabel()}.
+          </p>
+          <ul className="laundry-list">
+            {laundry.map((l) => {
+              const g = byId.get(l.id);
+              if (!g) return null;
+              return (
+                <li key={l.id}>
+                  <label>
+                    <span className="thumb">
+                      <GarmentPhoto imageId={g.imageId} alt="" compact />
+                    </span>
+                    <span className="info">
+                      <b>{g.name}</b>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={l.checked}
+                      onChange={(e) => setLaundry((cur) => cur!.map((x) => (x.id === l.id ? { ...x, checked: e.target.checked } : x)))}
+                    />
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </Sheet>
+      )}
 
       {picker && slots && (
         <SlotPicker

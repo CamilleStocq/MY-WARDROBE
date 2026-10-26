@@ -86,9 +86,11 @@ export interface DeriveInput {
   isCached?: boolean;
   manual?: ManualWeather | null;
   prefs: UserPreferences;
+  /** jour visé (AAAA-MM-JJ) ; par défaut, le jour « today » des prévisions */
+  date?: string;
 }
 
-export function deriveNeeds({ weather, isCached, manual, prefs }: DeriveInput): WeatherNeeds {
+export function deriveNeeds({ weather, isCached, manual, prefs, date }: DeriveInput): WeatherNeeds {
   const window = { start: prefs.outing.start, end: Math.max(prefs.outing.start, prefs.outing.end) };
   const offset = prefs.coldSensitivity * 3; // frileuse : le froid est ressenti 3 °C plus fort
 
@@ -136,11 +138,15 @@ export function deriveNeeds({ weather, isCached, manual, prefs }: DeriveInput): 
     };
   }
 
-  const hours = weather.hourly.filter((h) => {
+  const target = date ?? weather.today.date;
+  const isTomorrow = !!weather.tomorrow && weather.tomorrow.date === target && target !== weather.today.date;
+  const day = isTomorrow ? weather.tomorrow! : weather.today;
+  const dayHours = target ? weather.hourly.filter((h) => h.time.startsWith(target)) : weather.hourly;
+  const hours = dayHours.filter((h) => {
     const hr = parseInt(h.time.slice(11, 13), 10); // heure locale du lieu (ISO sans fuseau)
     return hr >= window.start && hr <= window.end;
   });
-  const sample = hours.length ? hours : weather.hourly;
+  const sample = hours.length ? hours : dayHours;
 
   let feels: number;
   let spread: number | null = null;
@@ -163,11 +169,11 @@ export function deriveNeeds({ weather, isCached, manual, prefs }: DeriveInput): 
     gusts = Math.max(...sample.map((h) => h.windGusts));
     wind = Math.max(...sample.map((h) => h.windSpeed));
   } else {
-    feels = weather.current.feelsLike;
-    rainProbability = weather.today.precipitationProbabilityMax;
-    rainAmount = weather.today.precipitationSum;
-    gusts = weather.today.gustMax;
-    wind = weather.today.windMax;
+    feels = isTomorrow ? Math.round((0.6 * day.feelsMin + 0.4 * day.feelsMax) * 10) / 10 : weather.current.feelsLike;
+    rainProbability = day.precipitationProbabilityMax;
+    rainAmount = day.precipitationSum;
+    gusts = day.gustMax;
+    wind = day.windMax;
   }
 
   const adjusted = feels + offset;

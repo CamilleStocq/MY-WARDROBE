@@ -3,9 +3,13 @@ import { buildOpenMeteoUrl, parseOpenMeteo } from './weather/openMeteo';
 import { analyzePixels, hasTransparency } from './colorAnalysis';
 import { maskBounds } from './backgroundRemoval';
 import { validateBackup } from './backupService';
+import { needsBackupReminder } from './backupFile';
 import { canonical, fingerprint, snapshotsToPrune, unreferencedImages } from './snapshotService';
 import { normalizeGarment, normalizePreferences, validateGarment } from '../domain/normalize';
 import { roundCoord } from './locationService';
+import { localDate, pickPlan } from './outfitService';
+import { cleanBy, isBackFromLaundry, lastLaundryReturn, laundryCandidates, nextLaundryReturn } from './laundryService';
+import { deriveNeeds } from '../engine/weatherNeeds';
 
 const loc = { name: 'Bruxelles', latitude: 50.8503, longitude: 4.3517 };
 
@@ -195,5 +199,128 @@ describe('copies automatiques', () => {
     const garments = [g('1', 'i1')];
     const index = [meta('s1', '2026-10-21T08:00:00Z', ['i2'])];
     expect(unreferencedImages(['i1', 'i2', 'i3'], garments, index)).toEqual(['i3']);
+  });
+});
+
+describe('rappel de sauvegarde', () => {
+  const now = new Date('2026-10-21T12:00:00Z');
+  it('rappelle quand il n’y a jamais eu de sauvegarde', () => {
+    expect(needsBackupReminder(null, null, now)).toBe(true);
+  });
+  it('ne rappelle pas avant 14 jours', () => {
+    expect(needsBackupReminder('2026-10-10T12:00:00Z', null, now)).toBe(false);
+    expect(needsBackupReminder('2026-10-01T12:00:00Z', null, now)).toBe(true);
+  });
+  it('respecte « Plus tard »', () => {
+    expect(needsBackupReminder(null, '2026-10-23T00:00:00Z', now)).toBe(false);
+    expect(needsBackupReminder(null, '2026-10-20T00:00:00Z', now)).toBe(true);
+  });
+});
+
+describe('option Demain', () => {
+  // deux jours : aujourd'hui doux et sec, demain froid et pluvieux (heures de sortie 8 h–19 h)
+  const hours = (date: string, temp: number, feels: number, rain: number) =>
+    Array.from({ length: 24 }, (_, h) => ({ time: `${date}T${String(h).padStart(2, '0')}:00`, temp, feels, rain }));
+  const all = [...hours('2026-10-21', 18, 18, 0), ...hours('2026-10-22', 5, 2, 80)];
+  const TWO_DAYS = {
+    current: SAMPLE.current,
+    hourly: {
+      time: all.map((h) => h.time),
+      temperature_2m: all.map((h) => h.temp),
+      apparent_temperature: all.map((h) => h.feels),
+      precipitation_probability: all.map((h) => h.rain),
+      precipitation: all.map((h) => (h.rain ? 0.4 : 0)),
+      weather_code: all.map((h) => (h.rain ? 61 : 1)),
+      wind_speed_10m: all.map(() => 10),
+      wind_gusts_10m: all.map(() => 20),
+    },
+    daily: {
+      time: ['2026-10-21', '2026-10-22'],
+      temperature_2m_max: [19, 6],
+      temperature_2m_min: [12, 3],
+      apparent_temperature_max: [19, 3],
+      apparent_temperature_min: [12, 0],
+      precipitation_probability_max: [0, 80],
+      precipitation_sum: [0, 9],
+      wind_speed_10m_max: [12, 15],
+      wind_gusts_10m_max: [20, 30],
+      weather_code: [1, 61],
+    },
+  };
+
+  it('demande deux jours et lit le lendemain', () => {
+    expect(new URL(buildOpenMeteoUrl(loc)).searchParams.get('forecast_days')).toBe('2');
+    const s = parseOpenMeteo(TWO_DAYS, loc);
+    expect(s.today.date).toBe('2026-10-21');
+    expect(s.tomorrow?.date).toBe('2026-10-22');
+    expect(s.tomorrow?.precipitationProbabilityMax).toBe(80);
+    expect(parseOpenMeteo(SAMPLE, loc).tomorrow).toBeUndefined();
+  });
+
+  it('les besoins de demain viennent uniquement des heures de demain', () => {
+    const s = parseOpenMeteo(TWO_DAYS, loc);
+    const prefs = normalizePreferences(null);
+    const today = deriveNeeds({ weather: s, prefs });
+    const tomorrow = deriveNeeds({ weather: s, prefs, date: '2026-10-22' });
+    expect(today.feels).toBe(18);
+    expect(today.rain).toBe('none');
+    expect(tomorrow.feels).toBe(2);
+    expect(tomorrow.rain).toBe('likely');
+    expect(tomorrow.band).not.toBe(today.band);
+  });
+
+  it('la tenue préparée la veille devient celle du jour', () => {
+    const look = { slots: { top: 't', bottom: 'b', accessories: [] }, locked: [], shown: [], occasion: 'quotidien' as const };
+    const d = localDate();
+    const planned = { ...look, date: d };
+    // aucune tenue composée aujourd'hui : la tenue préparée est reprise, avec un message
+    const picked = pickPlan('today', null, planned);
+    expect(picked?.slots.top).toBe('t');
+    expect(picked?.banner).toMatch(/préparée hier/);
+    // une tenue déjà composée aujourd'hui reste prioritaire
+    const own = { ...look, slots: { top: 'x', bottom: 'y', accessories: [] }, date: d };
+    expect(pickPlan('today', own, planned)?.slots.top).toBe('x');
+    // une tenue du jour vide ne masque pas la tenue préparée
+    expect(pickPlan('today', { ...own, slots: { accessories: [] } }, planned)?.slots.top).toBe('t');
+    // l'onglet Demain n'affiche que la tenue datée de demain
+    expect(pickPlan('tomorrow', null, planned)).toBeNull();
+    expect(pickPlan('tomorrow', null, { ...look, date: localDate(1) })?.slots.top).toBe('t');
+  });
+});
+
+describe('lavage du dimanche', () => {
+  // octobre 2026 : le 25 est un dimanche
+  const at = (s: string) => new Date(s);
+  const piece = (laundryAt: string | null, availability: 'laundry' | 'available' = 'laundry') =>
+    normalizeGarment({ id: 'g', name: 'Pull', category: 'top', subcategory: 'pull', primaryColor: 'black', availability, laundryAt, createdAt: '2026-10-01T10:00:00', updatedAt: '2026-10-01T10:00:00' });
+
+  it('le retour a lieu le dimanche à 17 h', () => {
+    expect(lastLaundryReturn(at('2026-10-22T09:00:00')).toString()).toBe(at('2026-10-18T17:00:00').toString());
+    expect(lastLaundryReturn(at('2026-10-25T16:59:00')).toString()).toBe(at('2026-10-18T17:00:00').toString());
+    expect(lastLaundryReturn(at('2026-10-25T17:00:00')).toString()).toBe(at('2026-10-25T17:00:00').toString());
+    expect(nextLaundryReturn(at('2026-10-22T09:00:00')).toString()).toBe(at('2026-10-25T17:00:00').toString());
+  });
+
+  it('les pièces mises au lavage avant dimanche 17 h redeviennent propres', () => {
+    const g = piece('2026-10-22T08:00:00');
+    expect(isBackFromLaundry(g, at('2026-10-25T16:00:00'))).toBe(false);
+    expect(isBackFromLaundry(g, at('2026-10-25T17:00:00'))).toBe(true);
+    // une pièce mise au lavage dimanche soir attend la machine suivante
+    expect(isBackFromLaundry(piece('2026-10-25T18:00:00'), at('2026-10-27T09:00:00'))).toBe(false);
+    // plusieurs dimanches sans ouvrir l'app : rattrapé à l'ouverture
+    expect(isBackFromLaundry(g, at('2026-11-09T09:00:00'))).toBe(true);
+    expect(isBackFromLaundry(piece(null, 'available'), at('2026-11-09T09:00:00'))).toBe(false);
+  });
+
+  it('demain : une pièce propre avant la sortie est proposée', () => {
+    const g = piece('2026-10-23T08:00:00');
+    expect(cleanBy(g, at('2026-10-24T08:00:00'))).toBe(false); // samedi
+    expect(cleanBy(g, at('2026-10-26T08:00:00'))).toBe(true); // lundi
+  });
+
+  it('propose le linge du quotidien, pas la veste ni les chaussures', () => {
+    const c = laundryCandidates({ top: 't', bottom: 'b', outer: 'o', shoes: 's', accessories: ['a'] });
+    expect(c.filter((x) => x.checked).map((x) => x.id)).toEqual(['t', 'b']);
+    expect(c.map((x) => x.id)).toEqual(['t', 'b', 'o', 's']);
   });
 });

@@ -9,6 +9,7 @@ import { FavoritesScreen } from './ui/screens/FavoritesScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { CalendarScreen } from './ui/screens/CalendarScreen';
 import { GarmentEditor } from './ui/garment/GarmentEditor';
+import { Onboarding } from './ui/Onboarding';
 
 type Route = 'today' | 'wardrobe' | 'calendar' | 'favorites' | 'settings';
 const ROUTES: Route[] = ['today', 'wardrobe', 'calendar', 'favorites', 'settings'];
@@ -52,8 +53,14 @@ function useRoute(): [Route, (r: Route) => void] {
 }
 
 function Shell() {
-  const { ready, fatal, toasts, dismissToast, detailId, openGarment, adding, setAdding } = useStore();
+  const { ready, fatal, toasts, dismissToast, detailId, openGarment, adding, setAdding, prefs, setPrefs, garments } = useStore();
   const [route, go] = useRoute();
+
+  // premier lancement guidé : seulement pour un dressing vide ; un dressing existant le marque comme fait
+  const onboarding = ready && !prefs.onboardingDone && garments.length === 0;
+  useEffect(() => {
+    if (ready && !prefs.onboardingDone && garments.length > 0) setPrefs({ ...prefs, onboardingDone: true });
+  }, [ready, prefs, garments.length, setPrefs]);
 
   useEffect(() => {
     document.title = `${TITLES[route]} · My Wardrobe`;
@@ -117,6 +124,7 @@ function Shell() {
         ))}
       </nav>
 
+      {onboarding && <Onboarding />}
       {adding && <GarmentEditor onClose={() => setAdding(false)} />}
       {detailId && <GarmentDetail id={detailId} onClose={() => openGarment(null)} />}
 

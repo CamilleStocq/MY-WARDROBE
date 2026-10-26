@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Availability, Occasion, SlotName } from '../../domain/types';
+import { laundryReturnLabel } from '../../services/laundryService';
 import {
   AVAILABILITY_LABELS,
   CATEGORY_SINGULAR,
@@ -221,7 +222,7 @@ export function GarmentDetail({ id, onClose }: { id: string; onClose: () => void
             </Button>
             {g.availability !== 'available' && (
               <p className="small muted" style={{ textAlign: 'center', marginTop: 'var(--s2)' }}>
-                Disponible à nouveau pour créer une tenue une fois sorti du lavage.
+                {g.availability === 'laundry' ? `Au lavage : de nouveau disponible ${laundryReturnLabel()}, après la machine.` : 'Indisponible pour le moment.'}
               </p>
             )}
           </div>

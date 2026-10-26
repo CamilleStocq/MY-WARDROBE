@@ -28,6 +28,7 @@ export function defaultPreferences(): UserPreferences {
     outing: { start: 8, end: 19 },
     location: null,
     customSubcategories: [],
+    onboardingDone: false,
   };
 }
 
@@ -70,6 +71,7 @@ export function normalizeGarment(raw: Partial<Garment> & { id: string }): Garmen
     notes: raw.notes ?? '',
     isDemo: raw.isDemo ?? false,
     favorite: raw.favorite ?? false,
+    laundryAt: (raw.availability ?? 'available') === 'laundry' ? (raw.laundryAt ?? raw.updatedAt ?? now) : null,
     createdAt: raw.createdAt ?? now,
     updatedAt: raw.updatedAt ?? raw.createdAt ?? now,
   };
@@ -130,6 +132,7 @@ export function normalizePreferences(raw: Partial<UserPreferences> | undefined |
     rareColors: arr(raw.rareColors),
     occasions: arr(raw.occasions).length ? arr(raw.occasions) : d.occasions,
     customSubcategories: arr(raw.customSubcategories),
+    onboardingDone: raw.onboardingDone === true,
     usualFormality: clampInt<Formality>(raw.usualFormality, 1, 3, 1),
   };
 }

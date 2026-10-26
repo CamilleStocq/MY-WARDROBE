@@ -4,9 +4,10 @@ import { ALL_STYLES, CATEGORY_ORDER, CATEGORY_SINGULAR, FORMALITY_LABELS, OCCASI
 import { DEFAULT_THRESHOLDS } from '../../domain/normalize';
 import { TREND_BASE, TREND_RULES } from '../../engine/trends';
 import { WEIGHTS } from '../../engine/weights';
-import { deleteEverything, exportBackup, importBackup, readBackup, type BackupFile, type BackupSummary } from '../../services/backupService';
+import { deleteEverything, importBackup, readBackup, type BackupFile, type BackupSummary } from '../../services/backupService';
+import { lastBackupDate, saveBackupFile } from '../../services/backupFile';
 import { weatherProvider } from '../../services/weather/weatherService';
-import { kv, newId } from '../../services/db';
+import { newId } from '../../services/db';
 import { MAX_SNAPSHOTS, listSnapshots, restoreSnapshot, type SnapshotMeta } from '../../services/snapshotService';
 import { useStore } from '../../state/store';
 import { Button, ChipGroup, ColorPicker, ConfirmDialog, Field, IconButton, Notice, Segmented } from '../primitives';
@@ -25,7 +26,7 @@ export function SettingsScreen() {
   const [storage, setStorage] = useState<{ persisted: boolean | null; usedMb: number | null }>({ persisted: null, usedMb: null });
 
   useEffect(() => {
-    kv.get<string>('backup:last').then((d) => setLastBackup(d ?? null)).catch(() => undefined);
+    lastBackupDate().then(setLastBackup).catch(() => undefined);
     listSnapshots().then(setSnapshots).catch(() => undefined);
     (async () => {
       try {
@@ -45,30 +46,9 @@ export function SettingsScreen() {
   async function doExport() {
     setBusy('export');
     try {
-      const blob = await exportBackup();
-      const name = `my-wardrobe-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
-      const file = new File([blob], name, { type: 'application/json' });
-      let shared = false;
-      // sur iPhone, le partage permet d'enregistrer directement dans Fichiers ou iCloud Drive
-      if (navigator.canShare?.({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: 'Sauvegarde My Wardrobe' });
-          shared = true;
-        } catch (e) {
-          if ((e as Error).name === 'AbortError') return; // partage annulé
-        }
-      }
-      if (!shared) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = name;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 2000);
-      }
-      const now = new Date().toISOString();
-      await kv.set('backup:last', now).catch(() => undefined);
-      setLastBackup(now);
+      const r = await saveBackupFile();
+      if (r === 'cancelled') return;
+      setLastBackup(await lastBackupDate());
       toast('Sauvegarde créée');
     } catch {
       toast('La sauvegarde n’a pas pu être créée.', { tone: 'error' });

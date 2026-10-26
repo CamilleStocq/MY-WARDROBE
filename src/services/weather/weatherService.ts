@@ -49,7 +49,8 @@ export async function getWeather(loc: ForecastLocation, opts: { force?: boolean 
   const key = cacheKey(loc);
   const cached = await kv.get<WeatherSnapshot>(key).catch(() => undefined);
 
-  if (!opts.force && cached && Date.now() - new Date(cached.timestamp).getTime() < RECENT_MS && todayIn(cached)) {
+  // les données des anciennes versions (sans le lendemain) sont rechargées
+  if (!opts.force && cached && cached.tomorrow && Date.now() - new Date(cached.timestamp).getTime() < RECENT_MS && todayIn(cached)) {
     return { snapshot: { ...cached, location: { ...cached.location, name: loc.name } }, freshness: 'recent', outdated: false, error: null };
   }
 

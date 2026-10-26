@@ -1,4 +1,4 @@
-import type { WeatherHour, WeatherSnapshot } from '../../domain/types';
+import type { DayForecast, WeatherHour, WeatherSnapshot } from '../../domain/types';
 import { WeatherError, type ForecastLocation, type WeatherProvider } from './provider';
 
 /**
@@ -38,7 +38,7 @@ export function buildOpenMeteoUrl(loc: ForecastLocation): string {
     hourly: HOURLY.join(','),
     daily: DAILY.join(','),
     timezone: 'auto',
-    forecast_days: '1',
+    forecast_days: '2', // aujourd'hui et demain
     wind_speed_unit: 'kmh',
   });
   return `${ENDPOINT}?${p.toString()}`;
@@ -84,19 +84,25 @@ export function parseOpenMeteo(json: OpenMeteoResponse, loc: ForecastLocation, n
       windGusts: num(c.wind_gusts_10m),
       isDay: c.is_day === 1,
     },
-    today: {
-      date: String(d.time?.[0] ?? ''),
-      min: num(d.temperature_2m_min?.[0]),
-      max: num(d.temperature_2m_max?.[0]),
-      feelsMin: num(d.apparent_temperature_min?.[0]),
-      feelsMax: num(d.apparent_temperature_max?.[0]),
-      precipitationProbabilityMax: typeof d.precipitation_probability_max?.[0] === 'number' ? (d.precipitation_probability_max[0] as number) : null,
-      precipitationSum: num(d.precipitation_sum?.[0]),
-      windMax: num(d.wind_speed_10m_max?.[0]),
-      gustMax: num(d.wind_gusts_10m_max?.[0]),
-      weatherCode: num(d.weather_code?.[0]),
-    },
+    today: dayAt(d, 0)!,
+    tomorrow: dayAt(d, 1),
     hourly,
+  };
+}
+
+function dayAt(d: Record<string, (Num | string)[]>, i: number): DayForecast | undefined {
+  if (i > 0 && typeof d.time?.[i] !== 'string') return undefined;
+  return {
+    date: String(d.time?.[i] ?? ''),
+    min: num(d.temperature_2m_min?.[i]),
+    max: num(d.temperature_2m_max?.[i]),
+    feelsMin: num(d.apparent_temperature_min?.[i]),
+    feelsMax: num(d.apparent_temperature_max?.[i]),
+    precipitationProbabilityMax: typeof d.precipitation_probability_max?.[i] === 'number' ? (d.precipitation_probability_max[i] as number) : null,
+    precipitationSum: num(d.precipitation_sum?.[i]),
+    windMax: num(d.wind_speed_10m_max?.[i]),
+    gustMax: num(d.wind_gusts_10m_max?.[i]),
+    weatherCode: num(d.weather_code?.[i]),
   };
 }
 

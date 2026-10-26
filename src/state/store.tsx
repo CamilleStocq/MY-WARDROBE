@@ -12,6 +12,7 @@ import { getWeather, type WeatherResult } from '../services/weather/weatherServi
 import { loadDemoWardrobe, removeDemoWardrobe } from '../services/demoData';
 import { clearWornDay, loadCalendar, recentlyWorn, setWornDay, type Calendar } from '../services/calendarService';
 import { takeSnapshot } from '../services/snapshotService';
+import * as laundryApi from '../services/laundryService';
 
 export interface ToastMsg {
   id: number;
@@ -36,11 +37,15 @@ interface Store {
   calendar: Calendar;
   weather: WeatherState;
   needs: WeatherNeeds;
+  /** besoins d'après les prévisions de demain (source « none » si indisponibles) */
+  needsTomorrow: WeatherNeeds;
 
   createGarment: typeof garmentsApi.createGarment;
   saveGarment: (g: Garment) => Promise<Garment>;
   removeGarment: (g: Garment) => Promise<void>;
   setAvailability: (g: Garment, a: Availability) => Promise<void>;
+  /** met plusieurs pièces au lavage (annulable depuis la notification) */
+  sendToLaundry: (list: Garment[]) => Promise<void>;
 
   addFavorite: typeof outfitsApi.saveFavorite;
   saveFavorite: (o: SavedOutfit) => Promise<SavedOutfit>;
@@ -56,7 +61,7 @@ interface Store {
   setManualWeather: (m: ManualWeather | null) => void;
   rememberProposal: (slots: OutfitSlots) => Promise<void>;
   rememberRejected: (signature: string) => Promise<void>;
-  engineContext: (occasion: Occasion) => EngineContext;
+  engineContext: (occasion: Occasion, day?: 'today' | 'tomorrow') => EngineContext;
 
   loadDemo: () => Promise<void>;
   removeDemo: () => Promise<void>;
@@ -185,6 +190,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, [weather.result, weather.manual, prefs]);
 
+  const needsTomorrow = useMemo(() => {
+    const r = weather.result;
+    const usable = r?.snapshot && !r.outdated ? r.snapshot : null;
+    const date = usable?.tomorrow?.date;
+    return deriveNeeds({ weather: date ? usable : null, isCached: r?.freshness === 'cache', prefs, date });
+  }, [weather.result, prefs]);
+
   // ---------- vêtements ----------
   const createGarment = useCallback<Store['createGarment']>(
     async (data) => {
@@ -236,10 +248,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const setAvailability = useCallback(
     async (g: Garment, a: Availability) => {
-      await saveGarment({ ...g, availability: a });
+      await saveGarment({ ...g, availability: a, laundryAt: a === 'laundry' ? new Date().toISOString() : null });
     },
     [saveGarment],
   );
+
+  const sendToLaundry = useCallback(
+    async (list: Garment[]) => {
+      if (!list.length) return;
+      try {
+        const updated = await laundryApi.sendToLaundry(list);
+        const byId = new Map(updated.map((g) => [g.id, g]));
+        setGarments((all) => all.map((g) => byId.get(g.id) ?? g));
+        const n = updated.length;
+        toast(`${n} pièce${n > 1 ? 's' : ''} au lavage, de retour ${laundryApi.laundryReturnLabel()}`, {
+          action: {
+            label: 'Annuler',
+            run: async () => {
+              await laundryApi.restoreGarments(list);
+              const before = new Map(list.map((g) => [g.id, g]));
+              setGarments((all) => all.map((g) => before.get(g.id) ?? g));
+            },
+          },
+        });
+      } catch (e) {
+        fail(e);
+      }
+    },
+    [fail, toast],
+  );
+
+  // Machine du dimanche : à 17 h, tout ce qui était au lavage redevient disponible.
+  // Vérifié à l'ouverture, au retour au premier plan et toutes les 5 minutes.
+  const garmentsRef = useRef(garments);
+  garmentsRef.current = garments;
+  useEffect(() => {
+    if (!ready) return;
+    let running = false;
+    const check = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const back = await laundryApi.applyLaundryReturn(garmentsRef.current);
+        if (back.length) {
+          const byId = new Map(back.map((g) => [g.id, g]));
+          setGarments((all) => all.map((g) => byId.get(g.id) ?? g));
+          toast(`Lavage du dimanche terminé : ${back.length} pièce${back.length > 1 ? 's' : ''} de nouveau disponible${back.length > 1 ? 's' : ''}`);
+        }
+      } catch {
+        /* nouvel essai à la prochaine vérification */
+      } finally {
+        running = false;
+      }
+    };
+    check();
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    const timer = setInterval(() => document.visibilityState === 'visible' && check(), 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      clearInterval(timer);
+    };
+  }, [ready, toast]);
 
   // ---------- favoris ----------
   const addFavorite = useCallback<Store['addFavorite']>(
@@ -340,9 +410,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const engineContext = useCallback(
-    (occasion: Occasion): EngineContext => ({
-      garments,
-      needs,
+    (occasion: Occasion, day: 'today' | 'tomorrow' = 'today'): EngineContext => ({
+      // demain : une pièce au lavage qui sera propre avant la sortie (machine du dimanche) est proposée
+      garments: day === 'tomorrow' ? garmentsFor(garments, tomorrowAt(prefs.outing.start)) : garments,
+      needs: day === 'tomorrow' ? needsTomorrow : needs,
       prefs,
       occasion,
       season: currentSeason(),
@@ -351,7 +422,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       rejected,
       favorites: favorites.map((f) => [f.slots.top, f.slots.mid, f.slots.bottom, f.slots.onepiece, f.slots.outer, f.slots.shoes].filter((x): x is string => !!x).sort()),
     }),
-    [garments, needs, prefs, recent, favorites, calendar, rejected],
+    [garments, needs, needsTomorrow, prefs, recent, favorites, calendar, rejected],
   );
 
   const loadDemo = useCallback(async () => {
@@ -384,10 +455,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     calendar,
     weather,
     needs,
+    needsTomorrow,
     createGarment,
     saveGarment,
     removeGarment,
     setAvailability,
+    sendToLaundry,
     addFavorite,
     saveFavorite,
     removeFavorite,
@@ -412,4 +485,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+function tomorrowAt(hour: number): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
+function garmentsFor(garments: Garment[], at: Date): Garment[] {
+  return garments.map((g) => (g.availability === 'laundry' && laundryApi.cleanBy(g, at) ? { ...g, availability: 'available' as const } : g));
 }

@@ -1,5 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react';
 import type { Availability, Garment, GarmentCategory, Season, Style } from '../../domain/types';
+import { laundryReturnLabel } from '../../services/laundryService';
 import { ALL_SEASONS, ALL_STYLES, AVAILABILITY_LABELS, CATEGORY_LABELS, CATEGORY_ORDER, SEASON_LABELS, STYLE_LABELS, subcategoryLabel } from '../../domain/taxonomy';
 import { getColor } from '../../domain/colors';
 import { useStore } from '../../state/store';
@@ -247,7 +248,7 @@ function Header({ count, onAdd, laundry = 0 }: { count: number; onAdd: () => voi
         {count > 0 && (
           <p className="sub">
             {count} pièce{count > 1 ? 's' : ''}
-            {laundry > 0 && `, dont ${laundry} au lavage`}
+            {laundry > 0 && `, dont ${laundry} au lavage jusqu’à ${laundryReturnLabel()}`}
           </p>
         )}
       </div>

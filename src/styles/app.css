@@ -10,7 +10,7 @@
   --surface-2: #efefef; /* survol / pression */
   --line: #e8e8e8; /* bordures discrètes */
   --text: #111111;
-  --text-2: #858585; /* texte secondaire */
+  --text-2: #6e6e6e; /* texte secondaire : 5,1:1 sur blanc (WCAG AA) */
   --black: #000000;
   --danger: #c4231b; /* réservé aux actions destructrices */
 
@@ -629,7 +629,7 @@ p {
 
 .swatches {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: var(--s2);
 }
 .swatch {
@@ -2449,4 +2449,205 @@ details > summary::-webkit-details-marker {
 .snapshot-list b {
   font-weight: 500;
   font-size: var(--fs-sm);
+}
+
+/* =========================================================================
+   Zones tactiles : au moins 44 × 44 px (recommandation Apple), sans grossir
+   le dessin — la zone cliquable est étendue par un pseudo-élément invisible.
+   ========================================================================= */
+.chip,
+.btn-sm,
+.link-btn,
+.segmented button,
+.toast button,
+.loc-btn,
+.swatch {
+  /* .row-nav est déjà positionné en absolu : il sert lui-même de repère */
+  position: relative;
+}
+.chip::after,
+.btn-sm::after,
+.link-btn::after,
+.segmented button::after,
+.toast button::after,
+.loc-btn::after,
+.row-nav::after {
+  content: '';
+  position: absolute;
+  inset: -6px -4px;
+}
+.swatch {
+  min-width: 44px;
+}
+.chip {
+  min-height: 38px;
+}
+.chip-row {
+  padding-block: 4px;
+}
+.row-nav {
+  width: 40px;
+  height: 40px;
+}
+
+/* rappel de sauvegarde sur l'accueil : une ligne discrète */
+.backup-reminder {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+.backup-reminder > span {
+  flex: 1;
+  min-width: 10em;
+}
+.backup-reminder svg {
+  color: var(--text-2);
+}
+.muted-link {
+  color: var(--text-2);
+}
+
+/* Aujourd'hui / Demain : deux mots soulignés, comme les catégories du dressing */
+.day-switch {
+  display: flex;
+  gap: var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+.day-switch button {
+  position: relative;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-md);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.day-switch button[aria-checked='true'] {
+  color: var(--text);
+  font-weight: 500;
+}
+.day-switch button[aria-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--black);
+}
+.day-switch button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+/* premier lancement guidé : une page blanche, une question à la fois */
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--white);
+  overflow-y: auto;
+  padding: calc(var(--safe-t, 0px) + var(--s4)) var(--s4) calc(var(--safe-b) + var(--s6));
+}
+.onb-inner {
+  max-width: 440px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+.onb-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  min-height: 44px;
+}
+.onb-progress {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.onb-progress li {
+  width: 28px;
+  height: 2px;
+  background: var(--line);
+}
+.onb-progress li.done {
+  background: var(--black);
+}
+.onb-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.onb-brand {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--text-2);
+}
+.onb-step h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 2.25rem;
+  line-height: 1.1;
+  outline: none;
+}
+.onb-text {
+  color: var(--text-2);
+  line-height: 1.55;
+  max-width: 36em;
+}
+.onb-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+/* proposition de lavage après « Je la porte aujourd'hui » */
+.laundry-list {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.laundry-list label {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-height: 64px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+.laundry-list .thumb {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: var(--r-sm, 8px);
+  overflow: hidden;
+  background: var(--surface);
+}
+.laundry-list .info {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-md);
+}
+.laundry-list .info b {
+  font-weight: 500;
+}
+.laundry-list input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--black);
 }

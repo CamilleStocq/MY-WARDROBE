@@ -63,6 +63,8 @@ export interface Garment {
   isDemo: boolean;
   /** pièce préférée : légèrement favorisée dans les propositions */
   favorite: boolean;
+  /** date de mise au lavage (null si la pièce n'y est pas) */
+  laundryAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -150,6 +152,8 @@ export interface UserPreferences {
   outing: { start: number; end: number };
   location: SavedLocation | null;
   customSubcategories: CustomSubcategory[];
+  /** premier lancement guidé terminé (ou passé) */
+  onboardingDone: boolean;
 }
 
 export type TemperatureBand = 'freezing' | 'cold' | 'cool' | 'mild' | 'warm' | 'hot';
@@ -181,19 +185,24 @@ export interface WeatherSnapshot {
     windGusts: number;
     isDay: boolean;
   };
-  today: {
-    date: string;
-    min: number;
-    max: number;
-    feelsMin: number;
-    feelsMax: number;
-    precipitationProbabilityMax: number | null;
-    precipitationSum: number;
-    windMax: number;
-    gustMax: number;
-    weatherCode: number;
-  };
+  today: DayForecast;
+  /** prévisions du lendemain (absentes des données enregistrées par les anciennes versions) */
+  tomorrow?: DayForecast;
+  /** heures d'aujourd'hui et de demain */
   hourly: WeatherHour[];
+}
+
+export interface DayForecast {
+  date: string;
+  min: number;
+  max: number;
+  feelsMin: number;
+  feelsMax: number;
+  precipitationProbabilityMax: number | null;
+  precipitationSum: number;
+  windMax: number;
+  gustMax: number;
+  weatherCode: number;
 }
 
 /** Météo saisie manuellement quand le service est indisponible. */

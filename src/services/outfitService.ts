@@ -76,21 +76,45 @@ export interface TodayState {
 }
 
 const TODAY_KEY = 'today';
+const TOMORROW_KEY = 'plan:tomorrow';
+export type PlanDay = 'today' | 'tomorrow';
 /** événement émis quand la tenue du jour est modifiée depuis un autre écran */
 export const TODAY_EVENT = 'mw:today-changed';
-export const localDate = () => {
+/** date locale AAAA-MM-JJ, décalée de `offset` jours */
+export const localDate = (offset = 0) => {
   const d = new Date();
+  d.setDate(d.getDate() + offset);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
+export const planDate = (day: PlanDay) => localDate(day === 'tomorrow' ? 1 : 0);
 
-export async function loadToday(): Promise<TodayState | null> {
-  const t = await kv.get<TodayState>(TODAY_KEY);
-  return t && t.date === localDate() ? t : null;
+const hasBase = (t: TodayState) => !!(t.slots.onepiece || (t.slots.top && t.slots.bottom));
+
+/**
+ * Choisit la tenue à afficher pour un jour, sans rien écrire.
+ * Une tenue préparée la veille devient la tenue du jour si aucune autre n'a été composée.
+ */
+export function pickPlan(day: PlanDay, today: TodayState | null | undefined, planned: TodayState | null | undefined, date = localDate()): TodayState | null {
+  if (day === 'tomorrow') return planned && planned.date === localDate(1) ? planned : null;
+  const t = today && today.date === date ? today : null;
+  if (t && hasBase(t)) return t;
+  if (planned && planned.date === date && hasBase(planned)) {
+    return { ...planned, autogen: false, banner: 'Voici la tenue préparée hier. Elle est vérifiée avec la météo du jour.' };
+  }
+  return t;
 }
 
-export async function saveToday(t: Omit<TodayState, 'date'>): Promise<void> {
-  await kv.set(TODAY_KEY, { ...t, date: localDate() });
+export async function loadPlan(day: PlanDay): Promise<TodayState | null> {
+  const [t, p] = await Promise.all([kv.get<TodayState>(TODAY_KEY), kv.get<TodayState>(TOMORROW_KEY)]);
+  return pickPlan(day, t, p);
 }
+
+export async function savePlan(day: PlanDay, t: Omit<TodayState, 'date'>): Promise<void> {
+  await kv.set(day === 'tomorrow' ? TOMORROW_KEY : TODAY_KEY, { ...t, date: planDate(day) });
+}
+
+export const loadToday = () => loadPlan('today');
+export const saveToday = (t: Omit<TodayState, 'date'>) => savePlan('today', t);
 
 export async function clearToday(): Promise<void> {
   await kv.del(TODAY_KEY);
